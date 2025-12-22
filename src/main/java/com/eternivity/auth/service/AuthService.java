@@ -6,10 +6,12 @@ import com.eternivity.auth.dto.RegisterRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
 import com.eternivity.auth.entity.User;
 import com.eternivity.auth.entity.UserSubscription;
+import com.eternivity.auth.exception.InvalidCredentialsException;
+import com.eternivity.auth.exception.UserAlreadyExistsException;
+import com.eternivity.auth.exception.UserNotFoundException;
 import com.eternivity.auth.repository.UserRepository;
 import com.eternivity.auth.repository.UserSubscriptionRepository;
 import com.eternivity.auth.security.JwtTokenProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,28 +24,31 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-    @Autowired
-    private UserRepository userRepository;
+    private final UserRepository userRepository;
+    private final UserSubscriptionRepository userSubscriptionRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtTokenProvider tokenProvider;
 
-    @Autowired
-    private UserSubscriptionRepository userSubscriptionRepository;
-
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-
-    @Autowired
-    private JwtTokenProvider tokenProvider;
+    public AuthService(UserRepository userRepository,
+                       UserSubscriptionRepository userSubscriptionRepository,
+                       PasswordEncoder passwordEncoder,
+                       JwtTokenProvider tokenProvider) {
+        this.userRepository = userRepository;
+        this.userSubscriptionRepository = userSubscriptionRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.tokenProvider = tokenProvider;
+    }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         // Check if username already exists
         if (userRepository.existsByUsername(request.getUsername())) {
-            throw new RuntimeException("Username is already taken");
+            throw new UserAlreadyExistsException("Username is already taken");
         }
 
         // Check if email already exists
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new RuntimeException("Email is already in use");
+            throw new UserAlreadyExistsException("Email is already in use");
         }
 
         // Create new user
@@ -64,11 +69,11 @@ public class AuthService {
     public AuthResponse login(LoginRequest request) {
         // Find user by username
         User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new RuntimeException("Invalid username or password"));
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new RuntimeException("Invalid username or password");
+            throw new InvalidCredentialsException("Invalid username or password");
         }
 
         // Fetch subscriptions for JWT token generation
@@ -84,7 +89,7 @@ public class AuthService {
     @Transactional(readOnly = true)
     public UserInfoResponse getCurrentUser(UUID userId) {
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
 
         List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(userId);
 

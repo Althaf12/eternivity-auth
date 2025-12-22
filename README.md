@@ -69,6 +69,27 @@ jwt.secret=your-secure-secret-key-here
 jwt.expiration=900000  # 15 minutes in milliseconds
 ```
 
+**IMPORTANT:** For production environments, use environment variables or secure configuration management instead of hardcoding sensitive values:
+
+```bash
+# Example using environment variables
+export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/eternivity_auth
+export SPRING_DATASOURCE_USERNAME=your_username
+export SPRING_DATASOURCE_PASSWORD=your_password
+export JWT_SECRET=your-secure-random-secret-key-with-at-least-256-bits
+export JWT_EXPIRATION=900000
+```
+
+Or update application.properties to reference environment variables:
+
+```properties
+spring.datasource.url=${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/eternivity_auth}
+spring.datasource.username=${SPRING_DATASOURCE_USERNAME:postgres}
+spring.datasource.password=${SPRING_DATASOURCE_PASSWORD:postgres}
+jwt.secret=${JWT_SECRET:change-this-in-production}
+jwt.expiration=${JWT_EXPIRATION:900000}
+```
+
 ### 3. Build the Application
 
 ```bash
