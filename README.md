@@ -249,8 +249,15 @@ curl -X GET http://localhost:8080/api/auth/me \
 - Passwords are hashed using BCrypt before storage
 - JWT tokens are signed using HS256 algorithm
 - Stateless authentication (no server-side session storage)
-- CSRF protection disabled (suitable for stateless JWT authentication)
 - Token-based authentication for protected endpoints
+- CSRF protection is intentionally disabled for this stateless REST API as it uses JWT tokens in the Authorization header (not cookies), making CSRF attacks not applicable
+
+**Security Note:** This application is designed as a stateless REST API backend. CSRF protection is disabled because:
+1. The API uses JWT tokens sent in the Authorization header, not cookies
+2. It's intended for programmatic access (mobile apps, SPAs) rather than traditional form-based web applications
+3. For stateless JWT authentication, CSRF attacks are not applicable
+
+If you plan to use this API with browser-based clients that store tokens in cookies, you should re-enable CSRF protection.
 
 ## Project Structure
 
