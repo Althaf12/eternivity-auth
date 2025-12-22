@@ -35,7 +35,7 @@ public class JwtTokenProvider {
         claims.put("sub", user.getUserId().toString());
         claims.put("username", user.getUsername());
         claims.put("email", user.getEmail());
-        
+
         // Add services information to JWT claims
         if (user.getSubscriptions() != null && !user.getSubscriptions().isEmpty()) {
             Map<String, Map<String, String>> services = user.getSubscriptions().stream()

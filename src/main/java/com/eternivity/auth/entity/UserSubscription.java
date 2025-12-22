@@ -6,7 +6,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDate;
-import java.util.UUID;
 
 @Entity
 @Table(name = "user_subscriptions")
@@ -20,7 +19,8 @@ public class UserSubscription {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_id", nullable = false, columnDefinition = "char(36)")
+    // name must match `mappedBy` in User.subscriptions (mappedBy = "user")
     private User user;
 
     @Column(name = "service_code", nullable = false)

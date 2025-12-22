@@ -1,5 +1,6 @@
 package com.eternivity.auth.entity;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -19,7 +20,11 @@ public class User {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "user_id")
+    // Persist UUID as 36-char textual UUID to match CHAR(36) column
+    @Convert(converter = UUIDAttributeConverter.class)
+    // Force JDBC binding as VARCHAR so connector sends text, avoiding binary/utf8 errors
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.VARCHAR)
+    @Column(name = "user_id", length = 36, columnDefinition = "char(36)")
     private UUID userId;
 
     @Column(nullable = false, unique = true)
@@ -33,6 +38,7 @@ public class User {
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss")
     private LocalDateTime createdAt;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
