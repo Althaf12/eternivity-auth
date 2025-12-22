@@ -64,31 +64,31 @@ public class JwtTokenProvider {
     }
 
     public UUID getUserIdFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+        Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
 
         return UUID.fromString(claims.getSubject());
     }
 
     public String getUsernameFromToken(String token) {
-        Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getSigningKey())
+        Claims claims = Jwts.parser()
+                .verifyWith(getSigningKey())
                 .build()
-                .parseClaimsJws(token)
-                .getBody();
+                .parseSignedClaims(token)
+                .getPayload();
 
         return claims.get("username", String.class);
     }
 
     public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder()
-                    .setSigningKey(getSigningKey())
+            Jwts.parser()
+                    .verifyWith(getSigningKey())
                     .build()
-                    .parseClaimsJws(token);
+                    .parseSignedClaims(token);
             return true;
         } catch (Exception e) {
             return false;
