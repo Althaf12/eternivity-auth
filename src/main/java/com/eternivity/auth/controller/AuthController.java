@@ -4,6 +4,7 @@ import com.eternivity.auth.dto.AuthResponse;
 import com.eternivity.auth.dto.LoginRequest;
 import com.eternivity.auth.dto.RegisterRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
+import com.eternivity.auth.dto.PasswordChangeRequest;
 import com.eternivity.auth.exception.InvalidCredentialsException;
 import com.eternivity.auth.exception.UserAlreadyExistsException;
 import com.eternivity.auth.exception.UserNotFoundException;
@@ -63,6 +64,20 @@ public class AuthController {
         }
     }
 
+    @PostMapping("/password-reset")
+    public ResponseEntity<?> changePassword(@RequestBody PasswordChangeRequest request) {
+        try {
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UUID userId = (UUID) authentication.getPrincipal();
+            authService.changePassword(userId, request.getOldPassword(), request.getNewPassword());
+            return ResponseEntity.ok(new MessageResponse("Password changed successfully"));
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+        } catch (InvalidCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
     // Inner class for error responses
     private static class ErrorResponse {
         private String message;
@@ -77,6 +92,18 @@ public class AuthController {
 
         public void setMessage(String message) {
             this.message = message;
+        }
+    }
+
+    private static class MessageResponse {
+        private String message;
+
+        public MessageResponse(String message) {
+            this.message = message;
+        }
+
+        public String getMessage() {
+            return message;
         }
     }
 }

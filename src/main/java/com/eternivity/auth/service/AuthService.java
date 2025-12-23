@@ -105,4 +105,17 @@ public class AuthService {
 
         return new UserInfoResponse(user.getUserId(), user.getUsername(), user.getEmail(), services);
     }
+
+    @Transactional
+    public void changePassword(UUID userId, String oldPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException("Old password is incorrect");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+    }
 }
