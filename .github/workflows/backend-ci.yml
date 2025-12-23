@@ -1,0 +1,26 @@
+name: Eternivity Auth Deploy on RP5 (Self-hosted)
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Update backend code
+        run: |
+          sudo -u eternivity git -C /opt/eternivity-auth pull origin main
+
+      - name: Build backend
+        run: |
+          cd /opt/eternivity-auth
+          sudo -u eternivity mvn clean package -DskipTests
+
+      - name: Restart backend service
+        run: |
+          sudo systemctl restart eternivity-auth
+
+      - name: Done
+        run: echo "Eternivity Auth deployed successfully."
