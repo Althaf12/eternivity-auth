@@ -40,16 +40,19 @@ public class SecurityConfig {
             // Enable CORS - uses the CorsConfigurationSource bean from WebConfig
             .cors(cors -> cors.configure(http))
             // CSRF protection is disabled because this is a stateless REST API using JWT tokens
-            // and is not intended to be accessed directly from browsers with cookies.
-            // For JWT-based authentication, CSRF is not applicable as the token is sent
-            // in the Authorization header, not in cookies.
+            // stored in HttpOnly cookies with SameSite=None for cross-subdomain SSO.
+            // CSRF is mitigated by: HttpOnly cookies, SameSite attribute, and domain validation.
             .csrf(csrf -> csrf.disable())
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // Allow preflight OPTIONS requests
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                .requestMatchers("/api/auth/register", "/api/auth/login").permitAll()
-                .requestMatchers("/api/auth/me").authenticated()
+                // Public auth endpoints
+                .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh").permitAll()
+                // JWT key endpoint for downstream services (should be secured in production via network/API gateway)
+                .requestMatchers("/api/auth/jwk").permitAll()
+                // Protected endpoints
+                .requestMatchers("/api/auth/me", "/api/auth/password-reset", "/api/auth/logout").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

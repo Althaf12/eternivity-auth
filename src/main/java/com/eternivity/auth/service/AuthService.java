@@ -4,11 +4,13 @@ import com.eternivity.auth.dto.AuthResponse;
 import com.eternivity.auth.dto.LoginRequest;
 import com.eternivity.auth.dto.RegisterRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
+import com.eternivity.auth.entity.RefreshToken;
 import com.eternivity.auth.entity.User;
 import com.eternivity.auth.entity.UserSubscription;
 import com.eternivity.auth.exception.InvalidCredentialsException;
 import com.eternivity.auth.exception.UserAlreadyExistsException;
 import com.eternivity.auth.exception.UserNotFoundException;
+import com.eternivity.auth.repository.RefreshTokenRepository;
 import com.eternivity.auth.repository.UserRepository;
 import com.eternivity.auth.repository.UserSubscriptionRepository;
 import com.eternivity.auth.security.JwtTokenProvider;
@@ -27,21 +29,43 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final UserSubscriptionRepository userSubscriptionRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
 
     public AuthService(UserRepository userRepository,
                        UserSubscriptionRepository userSubscriptionRepository,
+                       RefreshTokenRepository refreshTokenRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider tokenProvider) {
         this.userRepository = userRepository;
         this.userSubscriptionRepository = userSubscriptionRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
     }
 
+    /**
+     * Result containing both access and refresh tokens
+     */
+    public static class TokenPair {
+        private final String accessToken;
+        private final String refreshToken;
+        private final User user;
+
+        public TokenPair(String accessToken, String refreshToken, User user) {
+            this.accessToken = accessToken;
+            this.refreshToken = refreshToken;
+            this.user = user;
+        }
+
+        public String getAccessToken() { return accessToken; }
+        public String getRefreshToken() { return refreshToken; }
+        public User getUser() { return user; }
+    }
+
     @Transactional
-    public AuthResponse register(RegisterRequest request) {
+    public TokenPair register(RegisterRequest request, String deviceInfo) {
         // Check if username already exists
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new UserAlreadyExistsException("Username is already taken");
@@ -60,14 +84,12 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
 
-        // Generate JWT token
-        String token = tokenProvider.generateToken(savedUser);
-
-        return new AuthResponse(token, savedUser.getUsername(), savedUser.getEmail());
+        // Generate tokens
+        return createTokenPair(savedUser, deviceInfo);
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest request) {
+    @Transactional
+    public TokenPair login(LoginRequest request, String deviceInfo) {
         // Find user by username
         User user = userRepository.findByUsername(request.getUsername())
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
@@ -81,10 +103,47 @@ public class AuthService {
         List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(user.getUserId());
         user.setSubscriptions(subscriptions);
 
-        // Generate JWT token
-        String token = tokenProvider.generateToken(user);
+        // Generate tokens
+        return createTokenPair(user, deviceInfo);
+    }
 
-        return new AuthResponse(token, user.getUsername(), user.getEmail());
+    @Transactional
+    public TokenPair refreshTokens(String refreshTokenValue, String deviceInfo) {
+        // Hash the incoming refresh token to compare with stored hash
+        String tokenHash = tokenProvider.hashRefreshToken(refreshTokenValue);
+
+        // Find the valid refresh token
+        RefreshToken storedToken = refreshTokenRepository
+                .findValidByTokenHash(tokenHash, LocalDateTime.now())
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid or expired refresh token"));
+
+        // Get the user
+        User user = userRepository.findById(UUID.fromString(storedToken.getUserId()))
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        // Fetch subscriptions for JWT token generation
+        List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(user.getUserId());
+        user.setSubscriptions(subscriptions);
+
+        // Revoke the old refresh token (rotate)
+        storedToken.setRevokedAt(LocalDateTime.now());
+        refreshTokenRepository.save(storedToken);
+
+        // Generate new token pair
+        return createTokenPair(user, deviceInfo);
+    }
+
+    @Transactional
+    public void logout(String refreshTokenValue) {
+        if (refreshTokenValue != null && !refreshTokenValue.isEmpty()) {
+            String tokenHash = tokenProvider.hashRefreshToken(refreshTokenValue);
+            refreshTokenRepository.revokeByTokenHash(tokenHash, LocalDateTime.now());
+        }
+    }
+
+    @Transactional
+    public void logoutAll(UUID userId) {
+        refreshTokenRepository.revokeAllByUserId(userId.toString(), LocalDateTime.now());
     }
 
     @Transactional(readOnly = true)
@@ -117,5 +176,59 @@ public class AuthService {
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.save(user);
+
+        // Revoke all refresh tokens on password change for security
+        refreshTokenRepository.revokeAllByUserId(userId.toString(), LocalDateTime.now());
+    }
+
+    /**
+     * Create a new token pair (access + refresh) and store refresh token hash in DB
+     */
+    private TokenPair createTokenPair(User user, String deviceInfo) {
+        // Generate access token
+        String accessToken = tokenProvider.generateAccessToken(user);
+
+        // Generate refresh token
+        String refreshToken = tokenProvider.generateRefreshToken();
+        String refreshTokenHash = tokenProvider.hashRefreshToken(refreshToken);
+
+        // Store refresh token in DB
+        RefreshToken refreshTokenEntity = new RefreshToken();
+        refreshTokenEntity.setUserId(user.getUserId().toString());
+        refreshTokenEntity.setTokenHash(refreshTokenHash);
+        refreshTokenEntity.setExpiresAt(LocalDateTime.now().plusSeconds(
+                tokenProvider.getRefreshTokenExpirationMillis() / 1000));
+        refreshTokenEntity.setCreatedAt(LocalDateTime.now());
+        refreshTokenEntity.setLastUsedAt(LocalDateTime.now());
+        refreshTokenEntity.setDeviceInfo(deviceInfo != null ?
+                deviceInfo.substring(0, Math.min(deviceInfo.length(), 100)) : null);
+
+        refreshTokenRepository.save(refreshTokenEntity);
+
+        return new TokenPair(accessToken, refreshToken, user);
+    }
+
+    /**
+     * @deprecated Use register(RegisterRequest, String) instead
+     */
+    @Deprecated
+    @Transactional
+    public AuthResponse register(RegisterRequest request) {
+        TokenPair tokenPair = register(request, null);
+        return new AuthResponse(tokenPair.getAccessToken(),
+                tokenPair.getUser().getUsername(),
+                tokenPair.getUser().getEmail());
+    }
+
+    /**
+     * @deprecated Use login(LoginRequest, String) instead
+     */
+    @Deprecated
+    @Transactional(readOnly = true)
+    public AuthResponse login(LoginRequest request) {
+        TokenPair tokenPair = login(request, null);
+        return new AuthResponse(tokenPair.getAccessToken(),
+                tokenPair.getUser().getUsername(),
+                tokenPair.getUser().getEmail());
     }
 }
