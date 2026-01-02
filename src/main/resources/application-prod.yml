@@ -5,28 +5,16 @@ spring:
     activate:
       on-profile: prod
 
+# Vault config is in bootstrap.yml (required for Spring Cloud Vault)
 # Vault must contain secret/eternivity/auth with keys: db_url, db_username, db_password, jwt_secret
 
-  cloud:
-    vault:
-      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
-      authentication: APPROLE
-      app-role:
-        role-id: ${VAULT_ROLE_ID}
-        secret-id: ${VAULT_SECRET_ID}
-      kv:
-        enabled: true
-        backend: secret
-        default-context: eternivity/auth
-        profiles-separator: /
-
   datasource:
-    url: ${db_url}
-    username: ${db_username}
-    password: ${db_password}
+    url: ${db_url:}
+    username: ${db_username:}
+    password: ${db_password:}
 
 jwt:
-  secret: ${jwt_secret}
+  secret: ${jwt_secret:}
 
 app:
   cookie:

@@ -18,6 +18,7 @@ server:
   port: 8080
 
 jwt:
+  secret: ${jwt_secret:}
   expiration: 900000
   access-token:
     expiration: ${jwt_access_expiration:900000}
