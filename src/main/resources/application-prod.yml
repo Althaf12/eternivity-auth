@@ -24,3 +24,8 @@ app:
     allowed-origins: ${cors_allowed_origins:http://localhost:*,http://127.0.0.1:*,https://eternivity.com,https://www.eternivity.com,https://*.eternivity.com}
     allow-credentials: true
   allowed-redirect-domains: ${allowed_redirect_domains:.eternivity.com,localhost}
+
+logging:
+  level:
+    org.springframework.cloud.vault: DEBUG
+    org.springframework.vault: DEBUG

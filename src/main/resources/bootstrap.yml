@@ -11,7 +11,6 @@ spring:
 
   cloud:
     vault:
-      enabled: ${VAULT_ENABLED:true}
       uri: ${VAULT_ADDR:http://127.0.0.1:8200}
       authentication: APPROLE
       app-role:
@@ -25,10 +24,6 @@ spring:
         # For KV v2, the path is: secret/data/eternivity/auth
         # Spring Cloud Vault handles this automatically when backend=secret
         application-name: eternivity-auth
-        profiles-separator: /
+        profiles-separator: DISABLED
 
-logging:
-  level:
-    org.springframework.cloud.vault: DEBUG
-    org.springframework.vault: DEBUG
 
