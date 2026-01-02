@@ -1,9 +1,4 @@
 spring:
-  application:
-    name: eternivity-auth
-  config:
-    activate:
-      on-profile: prod
 
 # Vault config is in bootstrap.yml (required for Spring Cloud Vault)
 # Vault must contain secret/eternivity/auth with keys: db_url, db_username, db_password, jwt_secret
@@ -24,8 +19,3 @@ app:
     allowed-origins: ${cors_allowed_origins:http://localhost:*,http://127.0.0.1:*,https://eternivity.com,https://www.eternivity.com,https://*.eternivity.com}
     allow-credentials: true
   allowed-redirect-domains: ${allowed_redirect_domains:.eternivity.com,localhost}
-
-logging:
-  level:
-    org.springframework.cloud.vault: DEBUG
-    org.springframework.vault: DEBUG
