@@ -28,13 +28,13 @@ public class JwtTokenProvider {
     @Value("${jwt.secret}")
     private String jwtSecret;
 
-    @Value("${jwt.access-token.expiration:900000}")
+    @Value("${jwt.access-token.expiration}")
     private long accessTokenExpiration; // 15 minutes in milliseconds
 
-    @Value("${jwt.refresh-token.expiration:604800000}")
+    @Value("${jwt.refresh-token.expiration}")
     private long refreshTokenExpiration; // 7 days in milliseconds
 
-    @Value("${jwt.issuer:eternivity-auth}")
+    @Value("${jwt.issuer}")
     private String issuer;
 
     private SecretKey signingKey;

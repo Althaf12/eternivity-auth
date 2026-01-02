@@ -1,0 +1,19 @@
+# Eternivity Auth - Bootstrap Configuration for HashiCorp Vault
+# This file is SAFE TO COMMIT - no sensitive data here
+
+spring:
+  application:
+    name: eternivity-auth
+
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID}
+        secret-id: ${VAULT_SECRET_ID}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: eternivity/auth
+

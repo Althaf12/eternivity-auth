@@ -1,0 +1,37 @@
+spring:
+  application:
+    name: eternivity-auth
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+server:
+  port: 8080
+
+jwt:
+  expiration: 900000
+  access-token:
+    expiration: ${jwt_access_expiration:900000}
+  refresh-token:
+    expiration: ${jwt_refresh_expiration:604800000}
+  issuer: ${jwt_issuer:eternivity-auth}
+
+app:
+  cookie:
+    # Default empty (useful for localhost). Override per-profile or via Vault.
+    domain: ${cookie_domain:}
+    secure: ${cookie_secure:false}
+  allowed-redirect-domains: ${allowed_redirect_domains:.eternivity.com,localhost}
+  cors:
+    allowed-origins: ${cors_allowed_origins:http://localhost:*,http://127.0.0.1:*,https://eternivity.com,https://www.eternivity.com,https://*.eternivity.com}
+    allow-credentials: true
+

@@ -1,0 +1,24 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+# Production should rely on Vault (bootstrap.yml) to inject sensitive values.
+# Vault must contain secret/eternivity/auth with keys: db_url, db_username, db_password, jwt_secret
+
+  datasource:
+    url: ${db_url}
+    username: ${db_username}
+    password: ${db_password}
+
+jwt:
+  secret: ${jwt_secret}
+
+app:
+  cookie:
+    domain: ${cookie_domain:.eternivity.com}
+    secure: ${cookie_secure:true}
+  cors:
+    allowed-origins: ${cors_allowed_origins:http://localhost:*,http://127.0.0.1:*,https://eternivity.com,https://www.eternivity.com,https://*.eternivity.com}
+    allow-credentials: true
+  allowed-redirect-domains: ${allowed_redirect_domains:.eternivity.com,localhost}
