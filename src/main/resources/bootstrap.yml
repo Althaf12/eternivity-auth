@@ -25,6 +25,7 @@ spring:
         # For KV v2, the path is: secret/data/eternivity/auth
         # Spring Cloud Vault handles this automatically when backend=secret
         application-name: eternivity-auth
+        profiles-separator: /
 
 logging:
   level:
