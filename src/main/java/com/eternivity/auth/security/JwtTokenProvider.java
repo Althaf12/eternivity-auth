@@ -6,8 +6,14 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import jakarta.annotation.PostConstruct;
 import javax.crypto.SecretKey;
@@ -15,6 +21,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
@@ -25,16 +33,21 @@ import java.util.stream.Collectors;
 @Component
 public class JwtTokenProvider {
 
-    @Value("${jwt.secret}")
+    private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
+
+    @Autowired
+    private Environment environment;
+
+    @Value("${jwt.secret:}")
     private String jwtSecret;
 
-    @Value("${jwt.access-token.expiration}")
+    @Value("${jwt.access-token.expiration:900000}")
     private long accessTokenExpiration; // 15 minutes in milliseconds
 
-    @Value("${jwt.refresh-token.expiration}")
+    @Value("${jwt.refresh-token.expiration:604800000}")
     private long refreshTokenExpiration; // 7 days in milliseconds
 
-    @Value("${jwt.issuer}")
+    @Value("${jwt.issuer:eternivity-auth}")
     private String issuer;
 
     private SecretKey signingKey;
@@ -42,7 +55,83 @@ public class JwtTokenProvider {
 
     @PostConstruct
     public void init() {
-        this.signingKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
+        try {
+            // Determine active profiles
+            String[] activeProfiles = environment.getActiveProfiles();
+            boolean isLocal = environment.acceptsProfiles(Profiles.of("local", "dev"));
+            boolean isProd = environment.acceptsProfiles(Profiles.of("prod", "production"));
+
+            byte[] keyBytes;
+
+            // If jwtSecret not set via @Value, try common property/env fallbacks
+            if (!StringUtils.hasText(jwtSecret)) {
+                String fallback = environment.getProperty("jwt.secret");
+                if (!StringUtils.hasText(fallback)) {
+                    fallback = environment.getProperty("jwt_secret");
+                }
+                if (!StringUtils.hasText(fallback)) {
+                    fallback = environment.getProperty("JWT_SECRET");
+                }
+                if (StringUtils.hasText(fallback)) {
+                    jwtSecret = fallback;
+                    log.warn("Using jwt.secret from environment/property fallback");
+                }
+            }
+
+            if (!StringUtils.hasText(jwtSecret)) {
+                if (isLocal) {
+                    // Local development: generate a volatile key
+                    byte[] randomKey = new byte[32];
+                    secureRandom.nextBytes(randomKey);
+                    jwtSecret = Base64.getEncoder().encodeToString(randomKey);
+                    keyBytes = randomKey;
+                    log.warn("No jwt.secret provided — generated a volatile development key. Do NOT use this in production.");
+                } else {
+                    // In production (or any non-local profile) we must have a configured secret
+                    String msg = String.format("Missing required configuration property 'jwt.secret' for activeProfiles=%s. Ensure Vault/env provides 'jwt_secret' or set 'jwt.secret' in application-prod.yml or set env JWT_SECRET.", Arrays.toString(activeProfiles));
+                    log.error(msg);
+                    throw new IllegalStateException(msg);
+                }
+            } else {
+                // Try Base64 decode first
+                byte[] decoded = null;
+                try {
+                    decoded = Base64.getDecoder().decode(jwtSecret);
+                } catch (IllegalArgumentException ex) {
+                    decoded = null;
+                }
+
+                if (decoded != null && decoded.length >= 32) {
+                    keyBytes = decoded;
+                } else {
+                    // Use raw UTF-8 bytes; if shorter than 32, derive a 32-byte key via SHA-256
+                    keyBytes = jwtSecret.getBytes(StandardCharsets.UTF_8);
+                    if (keyBytes.length < 32) {
+                        try {
+                            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+                            keyBytes = digest.digest(keyBytes);
+                        } catch (NoSuchAlgorithmException e) {
+                            byte[] padded = new byte[32];
+                            System.arraycopy(keyBytes, 0, padded, 0, Math.min(keyBytes.length, 32));
+                            keyBytes = padded;
+                        }
+                        if (isProd) {
+                            String msg = String.format("Configured 'jwt.secret' is too short after decoding; provide a 32-byte (256-bit) key (base64 or raw). activeProfiles=%s", Arrays.toString(activeProfiles));
+                            log.error(msg);
+                            throw new IllegalStateException(msg);
+                        } else {
+                            log.warn("Provided jwt.secret was short; derived a 256-bit key via SHA-256 for local/testing usage.");
+                        }
+                    }
+                }
+            }
+
+            this.signingKey = Keys.hmacShaKeyFor(keyBytes);
+            log.info("Initialized JWT signing key; activeProfiles={} ; jwtSecretConfigured={} ", (Object) Arrays.toString(activeProfiles), StringUtils.hasText(jwtSecret));
+        } catch (Exception e) {
+            log.error("Failed to initialize JWT signing key", e);
+            throw new IllegalStateException("Failed to initialize JWT signing key: " + e.getMessage(), e);
+        }
     }
 
     private SecretKey getSigningKey() {
@@ -54,6 +143,7 @@ public class JwtTokenProvider {
      */
     public String generateAccessToken(User user) {
         Map<String, Object> claims = new HashMap<>();
+        // Use standard subject claim for user id
         claims.put("sub", user.getUserId().toString());
         claims.put("username", user.getUsername());
         claims.put("email", user.getEmail());
