@@ -20,7 +20,7 @@ spring:
       kv:
         enabled: true
         backend: secret
-        default-context: eternivity/auth
+        default-context: eternivity/DOES_NOT_EXIST
         # For KV v2, the path is: secret/data/eternivity/auth
         # Spring Cloud Vault handles this automatically when backend=secret
         application-name: eternivity-auth
