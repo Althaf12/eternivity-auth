@@ -104,6 +104,7 @@
         <dependency>
             <groupId>org.springframework.cloud</groupId>
             <artifactId>spring-cloud-starter-vault-config</artifactId>
+            <version>4.1.1</version>
         </dependency>
 
     </dependencies>
