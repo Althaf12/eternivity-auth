@@ -134,10 +134,6 @@
                         </goals>
                     </execution>
                 </executions>
-                <!-- optionally force layering disabled while debugging packaging issues -->
-                <configuration>
-                    <layers>false</layers>
-                </configuration>
             </plugin>
 
         </plugins>
