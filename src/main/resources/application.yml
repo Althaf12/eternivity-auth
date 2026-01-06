@@ -1,6 +1,4 @@
 spring:
-  config:
-    import: optional:classpath:bootstrap.yml
   application:
     name: eternivity-auth
   jackson:
@@ -15,6 +13,20 @@ spring:
         format_sql: true
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
+
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: APPROLE
+      approle:
+        role-id: ${VAULT_ROLE_ID}
+        secret-id: ${VAULT_SECRET_ID}
+      fail-fast: false
+      kv:
+        enabled: true
+        backend: secret
+        default-context: eternivity/auth
+        profiles-separator: DISABLED
 
 server:
   port: 8080
