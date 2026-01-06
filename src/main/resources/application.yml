@@ -1,4 +1,6 @@
 spring:
+  config:
+    import: optional:bootstrap.yml
   application:
     name: eternivity-auth
   jackson:
