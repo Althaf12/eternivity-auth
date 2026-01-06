@@ -5,11 +5,12 @@
          http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
+    <!-- Ensure Spring Boot parent is explicit and consistent -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.2.0</version>
-        <relativePath/>
+        <version>3.2.0</version> <!-- pick a Spring Boot 3.2.x version compatible with your JDK (adjust if you prefer a different patch) -->
+        <relativePath/> <!-- lookup parent from repository -->
     </parent>
 
     <groupId>com.eternivity</groupId>
@@ -19,7 +20,7 @@
     <description>Authentication backend for Eternivity</description>
 
     <properties>
-        <java.version>17</java.version>
+        <java.version>20</java.version>
         <jwt.version>0.12.3</jwt.version>
     </properties>
 
@@ -121,18 +122,24 @@
 
     <build>
         <plugins>
+            <!-- Ensure the Spring Boot maven plugin repackages the jar correctly -->
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>3.2.0</version> <!-- match parent version -->
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <!-- optionally force layering disabled while debugging packaging issues -->
                 <configuration>
-                    <excludes>
-                        <exclude>
-                            <groupId>org.projectlombok</groupId>
-                            <artifactId>lombok</artifactId>
-                        </exclude>
-                    </excludes>
+                    <layers>false</layers>
                 </configuration>
             </plugin>
+
         </plugins>
     </build>
 </project>
