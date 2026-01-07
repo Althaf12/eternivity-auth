@@ -19,7 +19,7 @@ spring:
 
   cloud:
     vault:
-      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      uri: ${VAULT_ADDR}
       authentication: APPROLE
       approle:
         role-id: ${VAULT_ROLE_ID}
@@ -35,22 +35,22 @@ server:
   port: 8080
 
 jwt:
-  secret: ${jwt_secret:}
+  secret: ${jwt_secret}
   expiration: 900000
   access-token:
-    expiration: ${jwt_access_expiration:900000}
+    expiration: ${jwt_access_expiration}
   refresh-token:
-    expiration: ${jwt_refresh_expiration:604800000}
-  issuer: ${jwt_issuer:eternivity-auth}
+    expiration: ${jwt_refresh_expiration}
+  issuer: ${jwt_issuer}
 
 app:
   cookie:
     # Default empty (useful for localhost). Override per-profile or via Vault.
-    domain: ${cookie_domain:}
-    secure: ${cookie_secure:false}
-  allowed-redirect-domains: ${allowed_redirect_domains:.eternivity.com,localhost}
+    domain: ${cookie_domain}
+    secure: ${cookie_secure}
+  allowed-redirect-domains: ${allowed_redirect_domains}
   cors:
-    allowed-origins: ${cors_allowed_origins:http://localhost:*,http://127.0.0.1:*,https://eternivity.com,https://www.eternivity.com,https://*.eternivity.com}
+    allowed-origins: ${cors_allowed_origins}
     allow-credentials: true
 
 logging:
