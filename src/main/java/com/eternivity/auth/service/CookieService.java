@@ -11,16 +11,16 @@ public class CookieService {
     public static final String ACCESS_TOKEN_COOKIE = "access_token";
     public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
 
-    @Value("${jwt.access-token.expiration:900}")
+    @Value("${jwt.access-token.expiration}")
     private int accessTokenExpirationSeconds;
 
-    @Value("${jwt.refresh-token.expiration:604800}")
+    @Value("${jwt.refresh-token.expiration}")
     private int refreshTokenExpirationSeconds;
 
-    @Value("${app.cookie.domain:.eternivity.com}")
+    @Value("${app.cookie.domain}")
     private String cookieDomain;
 
-    @Value("${app.cookie.secure:true}")
+    @Value("${app.cookie.secure}")
     private boolean secureCookie;
 
     /**
