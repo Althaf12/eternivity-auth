@@ -4,6 +4,7 @@ import com.eternivity.auth.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -38,7 +39,7 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
             // Enable CORS - uses the CorsConfigurationSource bean from WebConfig
-            .cors(cors -> cors.configure(http))
+            .cors(Customizer.withDefaults())
             // CSRF protection is disabled because this is a stateless REST API using JWT tokens
             // stored in HttpOnly cookies with SameSite=None for cross-subdomain SSO.
             // CSRF is mitigated by: HttpOnly cookies, SameSite attribute, and domain validation.

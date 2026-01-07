@@ -35,8 +35,7 @@ public class WebConfig implements WebMvcConfigurer {
             registration.allowedOriginPatterns(patterns);
             registration.allowCredentials(true);
         } else {
-            // When using "*", credentials must be false
-            registration.allowedOrigins("*");
+            registration.allowedOriginPatterns("*");
             registration.allowCredentials(false);
         }
     }
@@ -54,7 +53,7 @@ public class WebConfig implements WebMvcConfigurer {
             config.setAllowedOriginPatterns(patterns);
             config.setAllowCredentials(true);
         } else {
-            config.addAllowedOrigin("*");
+            config.setAllowedOriginPatterns(List.of("*"));
             config.setAllowCredentials(false);
         }
 
