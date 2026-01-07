@@ -12,31 +12,47 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.Arrays;
 import java.util.List;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
 
-    @Value("${app.cors.allowed-origins:*}")
+    private static final Logger log = LoggerFactory.getLogger(WebConfig.class);
+
+    @Value("${app.cors.allowed-origins:}")
     private String allowedOriginsProperty;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        String[] patterns = Arrays.stream(allowedOriginsProperty.split(","))
+        List<String> parsed = Arrays.stream(allowedOriginsProperty.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .toArray(String[]::new);
+                .toList();
 
-        var registration = registry.addMapping("/**")
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("*")
-                .exposedHeaders("Authorization");
+        boolean credentialsAllowed = true;
+        if (parsed.isEmpty() || (parsed.size() == 1 && parsed.get(0).equals("*"))) {
+            // Don't accept a permissive wildcard coming from config; treat as no CORS origins configured.
+            log.warn("CORS allowed-origins is empty or '*'. No origin patterns will be registered; allowCredentials=false to avoid unsafe wildcard.");
+            credentialsAllowed = false;
+        }
 
-        if (patterns.length > 0 && !patterns[0].equals("*")) {
-            registration.allowedOriginPatterns(patterns);
-            registration.allowCredentials(true);
+        if (!parsed.isEmpty() && credentialsAllowed) {
+            String[] patterns = parsed.toArray(new String[0]);
+            log.info("Registering CORS allowedOriginPatterns: {} (allowCredentials=true)", parsed);
+            registry.addMapping("/**")
+                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedHeaders("*")
+                    .exposedHeaders("Authorization")
+                    .allowedOriginPatterns(patterns)
+                    .allowCredentials(true);
         } else {
-            registration.allowedOriginPatterns("*");
-            registration.allowCredentials(false);
+            log.info("Registering CORS with no allowed origin patterns; requests from other origins will be rejected or denied by the browser.");
+            registry.addMapping("/**")
+                    .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                    .allowedHeaders("*")
+                    .exposedHeaders("Authorization")
+                    .allowCredentials(false);
         }
     }
 
@@ -49,12 +65,13 @@ public class WebConfig implements WebMvcConfigurer {
                 .filter(s -> !s.isEmpty())
                 .toList();
 
-        if (!patterns.isEmpty() && !patterns.get(0).equals("*")) {
+        if (patterns.isEmpty() || (patterns.size() == 1 && patterns.get(0).equals("*"))) {
+            log.warn("CORS allowed-origins is empty or '*'. CorsConfiguration will not allow credentials and no origin patterns set.");
+            config.setAllowCredentials(false);
+        } else {
+            log.info("CorsConfiguration.setAllowedOriginPatterns: {} (allowCredentials=true)", patterns);
             config.setAllowedOriginPatterns(patterns);
             config.setAllowCredentials(true);
-        } else {
-            config.setAllowedOriginPatterns(List.of("*"));
-            config.setAllowCredentials(false);
         }
 
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
