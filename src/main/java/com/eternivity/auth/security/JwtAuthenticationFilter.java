@@ -1,12 +1,15 @@
 package com.eternivity.auth.security;
 
 import com.eternivity.auth.service.CookieService;
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
@@ -15,7 +18,12 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
@@ -27,18 +35,57 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, 
-                                    HttpServletResponse response, 
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
+            // Guard: if SecurityContext already has an authenticated principal, skip processing
+            if (SecurityContextHolder.getContext().getAuthentication() != null &&
+                    SecurityContextHolder.getContext().getAuthentication().isAuthenticated()) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
             String jwt = getJwtFromRequest(request);
 
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
                 UUID userId = tokenProvider.getUserIdFromToken(jwt);
                 String username = tokenProvider.getUsernameFromToken(jwt);
 
-                UsernamePasswordAuthenticationToken authentication = 
-                    new UsernamePasswordAuthenticationToken(userId, null, new ArrayList<>());
+                // Extract roles/authorities from token claims, if present
+                Collection<GrantedAuthority> authorities = new ArrayList<>();
+                try {
+                    Claims claims = tokenProvider.getAllClaimsFromToken(jwt);
+                    Object rolesObj = claims.get("roles");
+
+                    if (rolesObj instanceof String) {
+                        String rolesStr = (String) rolesObj;
+                        authorities = Arrays.stream(rolesStr.split(","))
+                                .map(String::trim)
+                                .filter(s -> !s.isEmpty())
+                                .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
+                                .map(SimpleGrantedAuthority::new)
+                                .collect(Collectors.toList());
+                    } else if (rolesObj instanceof List) {
+                        @SuppressWarnings("unchecked")
+                        List<Object> list = (List<Object>) rolesObj;
+                        authorities = list.stream()
+                                .filter(Objects::nonNull)
+                                .map(Object::toString)
+                                .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
+                                .map(SimpleGrantedAuthority::new)
+                                .collect(Collectors.toList());
+                    }
+                } catch (Exception ex) {
+                    logger.debug("Failed to extract roles from JWT claims, will fall back to default role", ex);
+                }
+
+                if (authorities == null || authorities.isEmpty()) {
+                    authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                }
+
+                UsernamePasswordAuthenticationToken authentication =
+                        new UsernamePasswordAuthenticationToken(userId, null, authorities);
                 authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
                 SecurityContextHolder.getContext().setAuthentication(authentication);
