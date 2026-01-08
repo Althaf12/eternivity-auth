@@ -32,17 +32,20 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
+    private final UserSubscriptionService userSubscriptionService;
 
     public AuthService(UserRepository userRepository,
                        UserSubscriptionRepository userSubscriptionRepository,
                        RefreshTokenRepository refreshTokenRepository,
                        PasswordEncoder passwordEncoder,
-                       JwtTokenProvider tokenProvider) {
+                       JwtTokenProvider tokenProvider,
+                       UserSubscriptionService userSubscriptionService) {
         this.userRepository = userRepository;
         this.userSubscriptionRepository = userSubscriptionRepository;
         this.refreshTokenRepository = refreshTokenRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
+        this.userSubscriptionService = userSubscriptionService;
     }
 
     /**
@@ -84,6 +87,13 @@ public class AuthService {
 
         User savedUser = userRepository.save(user);
 
+        // Assign default free subscriptions for all available services
+        userSubscriptionService.assignDefaultSubscriptions(savedUser);
+
+        // Fetch subscriptions for JWT token generation
+        List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(savedUser.getUserId());
+        savedUser.setSubscriptions(subscriptions);
+
         // Generate tokens
         return createTokenPair(savedUser, deviceInfo);
     }
@@ -99,8 +109,8 @@ public class AuthService {
             throw new InvalidCredentialsException("Invalid username or password");
         }
 
-        // Fetch subscriptions for JWT token generation
-        List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(user.getUserId());
+        // Ensure default subscriptions exist for existing users (assigns missing ones)
+        List<UserSubscription> subscriptions = userSubscriptionService.ensureDefaultSubscriptions(user);
         user.setSubscriptions(subscriptions);
 
         // Generate tokens
@@ -121,8 +131,8 @@ public class AuthService {
         User user = userRepository.findById(UUID.fromString(storedToken.getUserId()))
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        // Fetch subscriptions for JWT token generation
-        List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(user.getUserId());
+        // Ensure default subscriptions exist for users (assigns missing ones)
+        List<UserSubscription> subscriptions = userSubscriptionService.ensureDefaultSubscriptions(user);
         user.setSubscriptions(subscriptions);
 
         // Revoke the old refresh token (rotate)
@@ -146,12 +156,13 @@ public class AuthService {
         refreshTokenRepository.revokeAllByUserId(userId.toString(), LocalDateTime.now());
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public UserInfoResponse getCurrentUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
 
-        List<UserSubscription> subscriptions = userSubscriptionRepository.findByUser_UserId(userId);
+        // Ensure default subscriptions exist for users (assigns missing ones)
+        List<UserSubscription> subscriptions = userSubscriptionService.ensureDefaultSubscriptions(user);
 
         Map<String, UserInfoResponse.ServiceInfo> services = new HashMap<>();
         for (UserSubscription subscription : subscriptions) {
