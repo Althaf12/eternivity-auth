@@ -1,4 +1,19 @@
 spring:
+  config:
+    import: optional:vault://
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR}
+      authentication: APPROLE
+      approle:
+        role-id: ${VAULT_ROLE_ID}
+        secret-id: ${VAULT_SECRET_ID}
+      fail-fast: false
+      kv:
+        enabled: true
+        backend: secret
+        default-context: eternivity/auth
+        profiles-separator: DISABLED
 
   datasource:
     url: ${db_url_auth}
@@ -7,6 +22,12 @@ spring:
 
 jwt:
   secret: ${jwt_secret}
+  expiration: ${jwt_expiration}
+  access-token:
+    expiration: ${jwt_access_expiration}
+  refresh-token:
+    expiration: ${jwt_refresh_expiration}
+  issuer: ${jwt_issuer}
 
 app:
   cookie:
