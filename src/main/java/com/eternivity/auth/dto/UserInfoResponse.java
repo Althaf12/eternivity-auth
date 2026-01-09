@@ -15,6 +15,7 @@ public class UserInfoResponse {
     private String username;
     private String email;
     private Map<String, ServiceInfo> services;
+    private String profileImageUrl; // optional: from oauth_accounts for Google or other providers
 
     @Data
     @NoArgsConstructor

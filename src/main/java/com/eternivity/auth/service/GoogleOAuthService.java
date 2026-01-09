@@ -114,30 +114,44 @@ public class GoogleOAuthService {
         logger.info("Google OAuth: Processing authentication for email: {}", email);
 
         // Check if OAuth account already exists
-        Optional<OAuthAccount> existingOAuthAccount = oAuthAccountRepository
+        Optional<OAuthAccount> existingOAuthAccountOpt = oAuthAccountRepository
                 .findByProviderAndProviderUserId(PROVIDER_GOOGLE, googleUserId);
 
-        if (existingOAuthAccount.isPresent()) {
-            // User has logged in with Google before - just log them in
-            User user = existingOAuthAccount.get().getUser();
+        if (existingOAuthAccountOpt.isPresent()) {
+            // User has logged in with Google before - update profile image URL and log them in
+            OAuthAccount existingOAuthAccount = existingOAuthAccountOpt.get();
+            User user = existingOAuthAccount.getUser();
+            boolean updated = false;
+            if (pictureUrl != null && !pictureUrl.isEmpty()) {
+                if (existingOAuthAccount.getProfileImageUrl() == null ||
+                        !existingOAuthAccount.getProfileImageUrl().equals(pictureUrl)) {
+                    existingOAuthAccount.setProfileImageUrl(pictureUrl);
+                    updated = true;
+                }
+            }
+            if (updated) {
+                oAuthAccountRepository.save(existingOAuthAccount);
+                logger.info("Google OAuth: Updated profile image for OAuth account {}", existingOAuthAccount.getId());
+            }
+
             logger.info("Google OAuth: Existing OAuth account found for user: {}", user.getUserId());
             return createTokenPairForUser(user, deviceInfo, pictureUrl);
         }
 
         // Check if a user with this email already exists (registered via username/password)
-        Optional<User> existingUser = userRepository.findByEmail(email);
+        Optional<User> existingUser = userRepository.findByEmailIgnoreCase(email);
 
         if (existingUser.isPresent()) {
-            // Link Google OAuth to existing user account
+            // Link Google OAuth to existing user account and save profile image
             User user = existingUser.get();
             logger.info("Google OAuth: Linking Google account to existing user: {}", user.getUserId());
-            linkOAuthAccount(user, googleUserId);
+            linkOAuthAccount(user, googleUserId, pictureUrl);
             return createTokenPairForUser(user, deviceInfo, pictureUrl);
         }
 
         // Register new user with Google OAuth
         logger.info("Google OAuth: Registering new user with email: {}", email);
-        User newUser = registerNewGoogleUser(email, name, googleUserId);
+        User newUser = registerNewGoogleUser(email, name, googleUserId, pictureUrl);
         return createTokenPairForUser(newUser, deviceInfo, pictureUrl);
     }
 
@@ -162,11 +176,12 @@ public class GoogleOAuthService {
     /**
      * Link OAuth account to existing user.
      */
-    private void linkOAuthAccount(User user, String googleUserId) {
+    private void linkOAuthAccount(User user, String googleUserId, String profileImageUrl) {
         OAuthAccount oAuthAccount = new OAuthAccount();
         oAuthAccount.setUser(user);
         oAuthAccount.setProvider(PROVIDER_GOOGLE);
         oAuthAccount.setProviderUserId(googleUserId);
+        oAuthAccount.setProfileImageUrl(profileImageUrl);
         oAuthAccountRepository.save(oAuthAccount);
         logger.info("Google OAuth: Linked Google account {} to user {}", googleUserId, user.getUserId());
     }
@@ -174,7 +189,7 @@ public class GoogleOAuthService {
     /**
      * Register a new user from Google OAuth.
      */
-    private User registerNewGoogleUser(String email, String name, String googleUserId) {
+    private User registerNewGoogleUser(String email, String name, String googleUserId, String profileImageUrl) {
         // Generate username from email (before @) or name
         String username = generateUniqueUsername(email, name);
 
@@ -187,11 +202,12 @@ public class GoogleOAuthService {
 
         User savedUser = userRepository.save(user);
 
-        // Create OAuth account link
+        // Create OAuth account link with profile image
         OAuthAccount oAuthAccount = new OAuthAccount();
         oAuthAccount.setUser(savedUser);
         oAuthAccount.setProvider(PROVIDER_GOOGLE);
         oAuthAccount.setProviderUserId(googleUserId);
+        oAuthAccount.setProfileImageUrl(profileImageUrl);
         oAuthAccountRepository.save(oAuthAccount);
 
         // Assign default subscriptions (same as regular registration)

@@ -25,4 +25,8 @@ public class OAuthAccount {
 
     @Column(name = "provider_user_id", nullable = false)
     private String providerUserId;
+
+    // New column to store profile image URL from provider (e.g., Google)
+    @Column(name = "profile_image_url", length = 200)
+    private String profileImageUrl;
 }

@@ -13,6 +13,7 @@ import com.eternivity.auth.exception.UserNotFoundException;
 import com.eternivity.auth.repository.RefreshTokenRepository;
 import com.eternivity.auth.repository.UserRepository;
 import com.eternivity.auth.repository.UserSubscriptionRepository;
+import com.eternivity.auth.repository.OAuthAccountRepository;
 import com.eternivity.auth.security.JwtTokenProvider;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -30,6 +32,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final UserSubscriptionRepository userSubscriptionRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final OAuthAccountRepository oAuthAccountRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider tokenProvider;
     private final UserSubscriptionService userSubscriptionService;
@@ -37,12 +40,14 @@ public class AuthService {
     public AuthService(UserRepository userRepository,
                        UserSubscriptionRepository userSubscriptionRepository,
                        RefreshTokenRepository refreshTokenRepository,
+                       OAuthAccountRepository oAuthAccountRepository,
                        PasswordEncoder passwordEncoder,
                        JwtTokenProvider tokenProvider,
                        UserSubscriptionService userSubscriptionService) {
         this.userRepository = userRepository;
         this.userSubscriptionRepository = userSubscriptionRepository;
         this.refreshTokenRepository = refreshTokenRepository;
+        this.oAuthAccountRepository = oAuthAccountRepository;
         this.passwordEncoder = passwordEncoder;
         this.tokenProvider = tokenProvider;
         this.userSubscriptionService = userSubscriptionService;
@@ -107,13 +112,22 @@ public class AuthService {
 
     @Transactional
     public TokenPair login(LoginRequest request, String deviceInfo) {
-        // Find user by username
-        User user = userRepository.findByUsername(request.getUsername())
-                .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
+        String identifier = request.getIdentifier().trim();
+
+        User user;
+        if (identifier.contains("@")) {
+            // Treat as email (case-insensitive)
+            user = userRepository.findByEmailIgnoreCase(identifier)
+                    .orElseThrow(() -> new InvalidCredentialsException("Invalid email or password"));
+        } else {
+            // Treat as username
+            user = userRepository.findByUsername(identifier)
+                    .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
+        }
 
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new InvalidCredentialsException("Invalid username or password");
+            throw new InvalidCredentialsException("Invalid username/email or password");
         }
 
         // Ensure default subscriptions exist for existing users (assigns missing ones)
@@ -180,7 +194,20 @@ public class AuthService {
             services.put(subscription.getServiceCode(), serviceInfo);
         }
 
-        return new UserInfoResponse(user.getUserId(), user.getUsername(), user.getEmail(), services);
+        // Try to fetch profile image URL from OAuth accounts (prefer Google)
+        String profileImageUrl = null;
+        try {
+            Optional<com.eternivity.auth.entity.OAuthAccount> oauthOpt =
+                    oAuthAccountRepository.findByUserAndProvider(user, "google");
+
+            if (oauthOpt.isPresent()) {
+                profileImageUrl = oauthOpt.get().getProfileImageUrl();
+            }
+        } catch (Exception e) {
+            // ignore and continue without profile image
+        }
+
+        return new UserInfoResponse(user.getUserId(), user.getUsername(), user.getEmail(), services, profileImageUrl);
     }
 
     @Transactional
