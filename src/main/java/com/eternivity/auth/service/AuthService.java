@@ -55,16 +55,23 @@ public class AuthService {
         private final String accessToken;
         private final String refreshToken;
         private final User user;
+        private final String profileImageUrl; // optional, used for OAuth logins
 
         public TokenPair(String accessToken, String refreshToken, User user) {
+            this(accessToken, refreshToken, user, null);
+        }
+
+        public TokenPair(String accessToken, String refreshToken, User user, String profileImageUrl) {
             this.accessToken = accessToken;
             this.refreshToken = refreshToken;
             this.user = user;
+            this.profileImageUrl = profileImageUrl;
         }
 
         public String getAccessToken() { return accessToken; }
         public String getRefreshToken() { return refreshToken; }
         public User getUser() { return user; }
+        public String getProfileImageUrl() { return profileImageUrl; }
     }
 
     @Transactional
@@ -216,7 +223,8 @@ public class AuthService {
 
         refreshTokenRepository.save(refreshTokenEntity);
 
-        return new TokenPair(accessToken, refreshToken, user);
+        // For non-OAuth flows we don't have a profile image URL
+        return new TokenPair(accessToken, refreshToken, user, null);
     }
 
     /**

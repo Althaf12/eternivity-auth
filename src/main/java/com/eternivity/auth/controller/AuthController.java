@@ -69,7 +69,8 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.CREATED).body(new AuthSuccessResponse(
                     "Registration successful",
                     tokenPair.getUser().getUsername(),
-                    tokenPair.getUser().getEmail()
+                    tokenPair.getUser().getEmail(),
+                    tokenPair.getProfileImageUrl()
             ));
         } catch (UserAlreadyExistsException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -103,7 +104,8 @@ public class AuthController {
             return ResponseEntity.ok(new AuthSuccessResponse(
                     "Login successful",
                     tokenPair.getUser().getUsername(),
-                    tokenPair.getUser().getEmail()
+                    tokenPair.getUser().getEmail(),
+                    tokenPair.getProfileImageUrl()
             ));
         } catch (InvalidCredentialsException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -142,7 +144,8 @@ public class AuthController {
             return ResponseEntity.ok(new AuthSuccessResponse(
                     "Google authentication successful",
                     tokenPair.getUser().getUsername(),
-                    tokenPair.getUser().getEmail()
+                    tokenPair.getUser().getEmail(),
+                    tokenPair.getProfileImageUrl()
             ));
         } catch (OAuthAuthenticationException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -318,11 +321,13 @@ public class AuthController {
         private String message;
         private String username;
         private String email;
+        private String profileImageUrl;
 
-        public AuthSuccessResponse(String message, String username, String email) {
+        public AuthSuccessResponse(String message, String username, String email, String profileImageUrl) {
             this.message = message;
             this.username = username;
             this.email = email;
+            this.profileImageUrl = profileImageUrl;
         }
 
         public String getMessage() { return message; }
@@ -331,6 +336,8 @@ public class AuthController {
         public void setUsername(String username) { this.username = username; }
         public String getEmail() { return email; }
         public void setEmail(String email) { this.email = email; }
+        public String getProfileImageUrl() { return profileImageUrl; }
+        public void setProfileImageUrl(String profileImageUrl) { this.profileImageUrl = profileImageUrl; }
     }
 
     public static class ErrorResponse {

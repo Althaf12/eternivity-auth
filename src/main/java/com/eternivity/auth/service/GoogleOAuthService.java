@@ -100,6 +100,7 @@ public class GoogleOAuthService {
         String googleUserId = payload.getSubject();
         String email = payload.getEmail();
         String name = (String) payload.get("name");
+        String pictureUrl = (String) payload.get("picture");
         Boolean emailVerified = payload.getEmailVerified();
 
         if (email == null || email.isEmpty()) {
@@ -120,7 +121,7 @@ public class GoogleOAuthService {
             // User has logged in with Google before - just log them in
             User user = existingOAuthAccount.get().getUser();
             logger.info("Google OAuth: Existing OAuth account found for user: {}", user.getUserId());
-            return createTokenPairForUser(user, deviceInfo);
+            return createTokenPairForUser(user, deviceInfo, pictureUrl);
         }
 
         // Check if a user with this email already exists (registered via username/password)
@@ -131,13 +132,13 @@ public class GoogleOAuthService {
             User user = existingUser.get();
             logger.info("Google OAuth: Linking Google account to existing user: {}", user.getUserId());
             linkOAuthAccount(user, googleUserId);
-            return createTokenPairForUser(user, deviceInfo);
+            return createTokenPairForUser(user, deviceInfo, pictureUrl);
         }
 
         // Register new user with Google OAuth
         logger.info("Google OAuth: Registering new user with email: {}", email);
         User newUser = registerNewGoogleUser(email, name, googleUserId);
-        return createTokenPairForUser(newUser, deviceInfo);
+        return createTokenPairForUser(newUser, deviceInfo, pictureUrl);
     }
 
     /**
@@ -234,7 +235,7 @@ public class GoogleOAuthService {
     /**
      * Create token pair for authenticated user.
      */
-    private AuthService.TokenPair createTokenPairForUser(User user, String deviceInfo) {
+    private AuthService.TokenPair createTokenPairForUser(User user, String deviceInfo, String profileImageUrl) {
         // Ensure default subscriptions exist
         List<UserSubscription> subscriptions = userSubscriptionService.ensureDefaultSubscriptions(user);
         user.setSubscriptions(subscriptions);
@@ -258,7 +259,7 @@ public class GoogleOAuthService {
 
         refreshTokenRepository.save(refreshTokenEntity);
 
-        return new AuthService.TokenPair(accessToken, refreshToken, user);
+        return new AuthService.TokenPair(accessToken, refreshToken, user, profileImageUrl);
     }
 
     /**
