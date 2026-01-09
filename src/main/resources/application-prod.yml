@@ -37,3 +37,8 @@ app:
     allowed-origins: ${cors_allowed_origins}
     allow-credentials: true
   allowed-redirect-domains: ${allowed_redirect_domains}
+
+# Google OAuth 2.0 configuration
+google:
+  client-id: ${google_client_id}
+  client-secret: ${google_client_secret}

@@ -1,14 +1,17 @@
 package com.eternivity.auth.controller;
 
+import com.eternivity.auth.dto.GoogleAuthRequest;
 import com.eternivity.auth.dto.LoginRequest;
 import com.eternivity.auth.dto.RegisterRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
 import com.eternivity.auth.dto.PasswordChangeRequest;
 import com.eternivity.auth.exception.InvalidCredentialsException;
+import com.eternivity.auth.exception.OAuthAuthenticationException;
 import com.eternivity.auth.exception.UserAlreadyExistsException;
 import com.eternivity.auth.exception.UserNotFoundException;
 import com.eternivity.auth.service.AuthService;
 import com.eternivity.auth.service.CookieService;
+import com.eternivity.auth.service.GoogleOAuthService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,13 +33,17 @@ public class AuthController {
 
     private final AuthService authService;
     private final CookieService cookieService;
+    private final GoogleOAuthService googleOAuthService;
 
     @Value("${app.allowed-redirect-domains:.eternivity.com}")
     private String allowedRedirectDomains;
 
-    public AuthController(AuthService authService, CookieService cookieService) {
+    public AuthController(AuthService authService,
+                         CookieService cookieService,
+                         GoogleOAuthService googleOAuthService) {
         this.authService = authService;
         this.cookieService = cookieService;
+        this.googleOAuthService = googleOAuthService;
     }
 
     @PostMapping("/register")
@@ -99,6 +106,45 @@ public class AuthController {
                     tokenPair.getUser().getEmail()
             ));
         } catch (InvalidCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse(e.getMessage()));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Redirect failed"));
+        }
+    }
+
+    /**
+     * Google OAuth 2.0 Sign-In endpoint.
+     * Accepts Google ID token from frontend and authenticates/registers user.
+     */
+    @PostMapping("/google")
+    public ResponseEntity<?> googleAuth(
+            @Valid @RequestBody GoogleAuthRequest request,
+            @RequestParam(value = "redirect_uri", required = false) String redirectUri,
+            HttpServletRequest httpRequest,
+            HttpServletResponse response) {
+        try {
+            String deviceInfo = getDeviceInfo(httpRequest);
+            AuthService.TokenPair tokenPair = googleOAuthService.authenticateWithGoogle(
+                    request.getCredential(), deviceInfo);
+
+            // Set HttpOnly cookies for SSO
+            cookieService.addAccessTokenCookie(response, tokenPair.getAccessToken());
+            cookieService.addRefreshTokenCookie(response, tokenPair.getRefreshToken());
+
+            // Handle redirect if provided
+            if (isValidRedirectUri(redirectUri)) {
+                response.sendRedirect(redirectUri);
+                return null;
+            }
+
+            return ResponseEntity.ok(new AuthSuccessResponse(
+                    "Google authentication successful",
+                    tokenPair.getUser().getUsername(),
+                    tokenPair.getUser().getEmail()
+            ));
+        } catch (OAuthAuthenticationException e) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ErrorResponse(e.getMessage()));
         } catch (IOException e) {

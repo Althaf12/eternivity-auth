@@ -1,0 +1,16 @@
+package com.eternivity.auth.exception;
+
+/**
+ * Exception thrown when OAuth authentication fails.
+ */
+public class OAuthAuthenticationException extends RuntimeException {
+
+    public OAuthAuthenticationException(String message) {
+        super(message);
+    }
+
+    public OAuthAuthenticationException(String message, Throwable cause) {
+        super(message, cause);
+    }
+}
+
