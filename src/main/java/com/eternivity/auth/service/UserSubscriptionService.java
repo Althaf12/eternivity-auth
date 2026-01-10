@@ -125,7 +125,9 @@ public class UserSubscriptionService {
         subscription.setStartDate(startDate);
         subscription.setEndDate(FREE_PLAN_END_DATE);
 
-        return userSubscriptionRepository.save(subscription);
+        UserSubscription saved = userSubscriptionRepository.save(subscription);
+        logger.info("Created subscription id={} for user {} service {}", saved.getId(), user.getUserId(), serviceCode);
+        return saved;
     }
 
     /**

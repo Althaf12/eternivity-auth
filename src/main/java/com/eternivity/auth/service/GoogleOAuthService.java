@@ -188,19 +188,26 @@ public class GoogleOAuthService {
 
     /**
      * Register a new user from Google OAuth.
+     * Creates user with password_hash = NULL (Google-only auth initially).
      */
     private User registerNewGoogleUser(String email, String name, String googleUserId, String profileImageUrl) {
         // Generate username from email (before @) or name
         String username = generateUniqueUsername(email, name);
 
-        // Create user with a random password (they'll use Google to log in)
+        // Create user WITHOUT password - they'll use Google to log in
+        // User can later set a password via /auth/set-password endpoint
         User user = new User();
         user.setEmail(email);
         user.setUsername(username);
-        // Set a random secure password - user will use OAuth, not password login
-        user.setPasswordHash(passwordEncoder.encode(UUID.randomUUID().toString()));
+        // password_hash is NULL for Google-only users
+        user.setPasswordHash(null);
 
         User savedUser = userRepository.save(user);
+        // Flush to ensure createdAt is populated by @CreationTimestamp
+        userRepository.flush();
+
+        logger.info("Google OAuth: Saved new user {} with createdAt {} (no password set)",
+                savedUser.getUserId(), savedUser.getCreatedAt());
 
         // Create OAuth account link with profile image
         OAuthAccount oAuthAccount = new OAuthAccount();
@@ -211,6 +218,7 @@ public class GoogleOAuthService {
         oAuthAccountRepository.save(oAuthAccount);
 
         // Assign default subscriptions (same as regular registration)
+        logger.info("Google OAuth: Assigning default subscriptions to user {}", savedUser.getUserId());
         userSubscriptionService.assignDefaultSubscriptions(savedUser);
 
         logger.info("Google OAuth: Created new user {} with username {}", savedUser.getUserId(), username);

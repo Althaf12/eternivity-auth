@@ -53,7 +53,7 @@ public class SecurityConfig {
                 // JWT key endpoint for downstream services (should be secured in production via network/API gateway)
                 .requestMatchers("/api/auth/jwk").permitAll()
                 // Protected endpoints
-                .requestMatchers("/api/auth/me", "/api/auth/password-reset", "/api/auth/logout").authenticated()
+                .requestMatchers("/api/auth/me", "/api/auth/password-reset", "/api/auth/logout", "/api/auth/set-password").authenticated()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

@@ -3,6 +3,7 @@ package com.eternivity.auth.controller;
 import com.eternivity.auth.dto.GoogleAuthRequest;
 import com.eternivity.auth.dto.LoginRequest;
 import com.eternivity.auth.dto.RegisterRequest;
+import com.eternivity.auth.dto.SetPasswordRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
 import com.eternivity.auth.dto.PasswordChangeRequest;
 import com.eternivity.auth.exception.InvalidCredentialsException;
@@ -249,6 +250,32 @@ public class AuthController {
             cookieService.clearAuthCookies(response);
 
             return ResponseEntity.ok(new MessageResponse("Password changed successfully. Please login again."));
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
+        } catch (InvalidCredentialsException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    /**
+     * Set password for Google-only users.
+     * Allows users who registered via Google to enable local username/password login.
+     */
+    @PostMapping("/set-password")
+    public ResponseEntity<?> setPassword(
+            @Valid @RequestBody SetPasswordRequest request) {
+        try {
+            // Validate passwords match
+            if (!request.getPassword().equals(request.getConfirmPassword())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(new ErrorResponse("Passwords do not match"));
+            }
+
+            Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+            UUID userId = (UUID) authentication.getPrincipal();
+            authService.setPassword(userId, request.getPassword());
+
+            return ResponseEntity.ok(new MessageResponse("Password set successfully. You can now login with username/password."));
         } catch (UserNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
         } catch (InvalidCredentialsException e) {

@@ -125,6 +125,11 @@ public class AuthService {
                     .orElseThrow(() -> new InvalidCredentialsException("Invalid username or password"));
         }
 
+        // Check if user has a password set (Google-only users have NULL password_hash)
+        if (user.getPasswordHash() == null || user.getPasswordHash().isEmpty()) {
+            throw new InvalidCredentialsException("No password set. Please use Google login or set a password first.");
+        }
+
         // Verify password
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new InvalidCredentialsException("Invalid username/email or password");
@@ -196,24 +201,70 @@ public class AuthService {
 
         // Try to fetch profile image URL from OAuth accounts (prefer Google)
         String profileImageUrl = null;
+        List<String> authProviders = new java.util.ArrayList<>();
+
         try {
             Optional<com.eternivity.auth.entity.OAuthAccount> oauthOpt =
                     oAuthAccountRepository.findByUserAndProvider(user, "google");
 
             if (oauthOpt.isPresent()) {
                 profileImageUrl = oauthOpt.get().getProfileImageUrl();
+                authProviders.add("GOOGLE");
             }
         } catch (Exception e) {
             // ignore and continue without profile image
         }
 
-        return new UserInfoResponse(user.getUserId(), user.getUsername(), user.getEmail(), services, profileImageUrl);
+        // Check if user has a local password set
+        boolean hasPassword = user.getPasswordHash() != null && !user.getPasswordHash().isEmpty();
+        if (hasPassword) {
+            authProviders.add(0, "LOCAL"); // Add LOCAL first if present
+        }
+
+        return new UserInfoResponse(
+                user.getUserId(),
+                user.getUsername(),
+                user.getEmail(),
+                services,
+                profileImageUrl,
+                hasPassword,
+                authProviders
+        );
+    }
+
+    /**
+     * Set password for a user who doesn't have one (Google-only users).
+     * This allows Google users to enable local login.
+     *
+     * @param userId The user's ID
+     * @param newPassword The new password to set
+     * @throws InvalidCredentialsException if user already has a password set
+     */
+    @Transactional
+    public void setPassword(UUID userId, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        // Only allow setting password if no password exists
+        if (user.getPasswordHash() != null && !user.getPasswordHash().isEmpty()) {
+            throw new InvalidCredentialsException("Password already set. Use change password instead.");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        // No need to revoke tokens - user is just enabling local login
     }
 
     @Transactional
     public void changePassword(UUID userId, String oldPassword, String newPassword) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        // Check if user has a password to change
+        if (user.getPasswordHash() == null || user.getPasswordHash().isEmpty()) {
+            throw new InvalidCredentialsException("No password set. Use set password instead.");
+        }
 
         if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
             throw new InvalidCredentialsException("Old password is incorrect");
