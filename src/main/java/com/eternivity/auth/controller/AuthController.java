@@ -1,8 +1,10 @@
 package com.eternivity.auth.controller;
 
+import com.eternivity.auth.dto.ForgotPasswordRequest;
 import com.eternivity.auth.dto.GoogleAuthRequest;
 import com.eternivity.auth.dto.LoginRequest;
 import com.eternivity.auth.dto.RegisterRequest;
+import com.eternivity.auth.dto.ResetPasswordRequest;
 import com.eternivity.auth.dto.SetPasswordRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
 import com.eternivity.auth.dto.PasswordChangeRequest;
@@ -13,6 +15,7 @@ import com.eternivity.auth.exception.UserNotFoundException;
 import com.eternivity.auth.service.AuthService;
 import com.eternivity.auth.service.CookieService;
 import com.eternivity.auth.service.GoogleOAuthService;
+import com.eternivity.auth.service.PasswordResetService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -35,16 +38,19 @@ public class AuthController {
     private final AuthService authService;
     private final CookieService cookieService;
     private final GoogleOAuthService googleOAuthService;
+    private final PasswordResetService passwordResetService;
 
     @Value("${app.allowed-redirect-domains:.eternivity.com}")
     private String allowedRedirectDomains;
 
     public AuthController(AuthService authService,
                          CookieService cookieService,
-                         GoogleOAuthService googleOAuthService) {
+                         GoogleOAuthService googleOAuthService,
+                         PasswordResetService passwordResetService) {
         this.authService = authService;
         this.cookieService = cookieService;
         this.googleOAuthService = googleOAuthService;
+        this.passwordResetService = passwordResetService;
     }
 
     @PostMapping("/register")
@@ -280,6 +286,49 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(new ErrorResponse(e.getMessage()));
         } catch (InvalidCredentialsException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
+        }
+    }
+
+    /**
+     * Forgot password - initiates password reset flow.
+     * Sends an email with reset link to the user's email address.
+     * Always returns success to prevent email enumeration attacks.
+     */
+    @PostMapping("/forgot-password")
+    public ResponseEntity<?> forgotPassword(@Valid @RequestBody ForgotPasswordRequest request) {
+        try {
+            passwordResetService.initiatePasswordReset(request.getEmail());
+        } catch (UserNotFoundException e) {
+            // Don't reveal if email exists or not - security best practice
+            // Log internally but return success to user
+        } catch (Exception e) {
+            // Log error but don't expose details
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Failed to process password reset request. Please try again later."));
+        }
+
+        // Always return success to prevent email enumeration
+        return ResponseEntity.ok(new MessageResponse("If an account exists with that email, a password reset link has been sent."));
+    }
+
+    /**
+     * Reset password - validates token and sets new password.
+     * Called when user clicks the reset link from email.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
+        try {
+            passwordResetService.resetPassword(request.getToken(), request.getNewPassword());
+            return ResponseEntity.ok(new MessageResponse("Password reset successfully. You can now login with your new password."));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        } catch (UserNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(new ErrorResponse("User not found"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(new ErrorResponse("Failed to reset password. Please try again later."));
         }
     }
 

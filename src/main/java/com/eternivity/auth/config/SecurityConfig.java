@@ -50,6 +50,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Public auth endpoints
                 .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/google").permitAll()
+                // Password reset endpoints (public - no auth required)
+                .requestMatchers("/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                 // JWT key endpoint for downstream services (should be secured in production via network/API gateway)
                 .requestMatchers("/api/auth/jwk").permitAll()
                 // Protected endpoints
