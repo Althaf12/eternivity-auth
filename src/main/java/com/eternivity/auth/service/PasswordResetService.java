@@ -7,6 +7,7 @@ import com.eternivity.auth.exception.UserNotFoundException;
 import com.eternivity.auth.exception.InvalidTokenException;
 import com.eternivity.auth.repository.PasswordResetTokenRepository;
 import com.eternivity.auth.repository.UserRepository;
+import com.eternivity.auth.exception.MailSendingException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,7 +33,7 @@ public class PasswordResetService {
 
     private final UserRepository userRepository;
     private final PasswordResetTokenRepository tokenRepository;
-    private final JavaMailSender mailSender;
+    private final JavaMailSender mailSender; // required
     private final PasswordEncoder passwordEncoder;
 
     @Value("${app.password-reset.token-expiry-minutes}")
@@ -41,13 +42,14 @@ public class PasswordResetService {
     @Value("${app.password-reset.frontend-url}")
     private String frontendResetUrl;
 
-    @Value("${spring.mail.username}")
+    // default from address when spring.mail.username is not set (local/dev)
+    @Value("${spring.mail.username:no-reply@eternivity.com}")
     private String fromEmail;
 
     public PasswordResetService(UserRepository userRepository,
-                                 PasswordResetTokenRepository tokenRepository,
-                                 JavaMailSender mailSender,
-                                 PasswordEncoder passwordEncoder) {
+                                PasswordResetTokenRepository tokenRepository,
+                                JavaMailSender mailSender,
+                                PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
         this.mailSender = mailSender;
@@ -88,7 +90,7 @@ public class PasswordResetService {
         // Send email with reset link
         sendPasswordResetEmail(user.getEmail(), user.getUsername(), rawToken);
 
-        log.info("Password reset email sent to user: {}", user.getEmail());
+        log.info("Password reset email flow initiated for user: {}", user.getEmail());
     }
 
     /**
@@ -159,6 +161,7 @@ public class PasswordResetService {
      */
     private void sendPasswordResetEmail(String toEmail, String username, String token) {
         String resetLink = frontendResetUrl + "?token=" + URLEncoder.encode(token, StandardCharsets.UTF_8);
+
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom(fromEmail);
         message.setTo(toEmail);
@@ -170,7 +173,7 @@ public class PasswordResetService {
             log.info("Password reset email sent successfully to: {}", toEmail);
         } catch (Exception e) {
             log.error("Failed to send password reset email to: {}", toEmail, e);
-            throw new RuntimeException("Failed to send password reset email. Please try again later.");
+            throw new MailSendingException("Failed to send password reset email. Please try again later.", e);
         }
     }
 
