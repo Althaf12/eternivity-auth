@@ -2,7 +2,9 @@ package com.eternivity.auth.service;
 
 import com.eternivity.auth.entity.PasswordResetToken;
 import com.eternivity.auth.entity.User;
+import com.eternivity.auth.exception.BadRequestException;
 import com.eternivity.auth.exception.UserNotFoundException;
+import com.eternivity.auth.exception.InvalidTokenException;
 import com.eternivity.auth.repository.PasswordResetTokenRepository;
 import com.eternivity.auth.repository.UserRepository;
 import org.slf4j.Logger;
@@ -92,20 +94,31 @@ public class PasswordResetService {
     /**
      * Validates the reset token and sets new password:
      * 1. Finds valid token by hash
-     * 2. Updates user password
-     * 3. Marks token as used
+     * 2. Validates new password is different from existing
+     * 3. Updates user password
+     * 4. Marks token as used
      */
     @Transactional
     public void resetPassword(String rawToken, String newPassword) {
+        // Validate password length
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new BadRequestException("Password must be at least 8 characters long");
+        }
+
         String tokenHash = hashToken(rawToken);
 
         PasswordResetToken resetToken = tokenRepository
                 .findValidTokenByHash(tokenHash, LocalDateTime.now())
-                .orElseThrow(() -> new IllegalArgumentException("Invalid or expired reset token"));
+                .orElseThrow(() -> new InvalidTokenException("Invalid or expired reset token"));
 
         // Get the user
         User user = userRepository.findById(java.util.UUID.fromString(resetToken.getUserId()))
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
+
+        // Check if new password is same as existing password
+        if (user.getPasswordHash() != null && passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new BadRequestException("New password must be different from your current password");
+        }
 
         // Update password
         user.setPasswordHash(passwordEncoder.encode(newPassword));

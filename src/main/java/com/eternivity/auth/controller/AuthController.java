@@ -8,7 +8,9 @@ import com.eternivity.auth.dto.ResetPasswordRequest;
 import com.eternivity.auth.dto.SetPasswordRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
 import com.eternivity.auth.dto.PasswordChangeRequest;
+import com.eternivity.auth.exception.BadRequestException;
 import com.eternivity.auth.exception.InvalidCredentialsException;
+import com.eternivity.auth.exception.InvalidTokenException;
 import com.eternivity.auth.exception.OAuthAuthenticationException;
 import com.eternivity.auth.exception.UserAlreadyExistsException;
 import com.eternivity.auth.exception.UserNotFoundException;
@@ -320,7 +322,10 @@ public class AuthController {
         try {
             passwordResetService.resetPassword(request.getToken(), request.getNewPassword());
             return ResponseEntity.ok(new MessageResponse("Password reset successfully. You can now login with your new password."));
-        } catch (IllegalArgumentException e) {
+        } catch (BadRequestException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(new ErrorResponse(e.getMessage()));
+        } catch (InvalidTokenException e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new ErrorResponse(e.getMessage()));
         } catch (UserNotFoundException e) {

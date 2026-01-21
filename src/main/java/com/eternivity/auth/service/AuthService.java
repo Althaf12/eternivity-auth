@@ -238,10 +238,15 @@ public class AuthService {
      *
      * @param userId The user's ID
      * @param newPassword The new password to set
-     * @throws InvalidCredentialsException if user already has a password set
+     * @throws InvalidCredentialsException if user already has a password set or password is too short
      */
     @Transactional
     public void setPassword(UUID userId, String newPassword) {
+        // Validate password length
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new InvalidCredentialsException("Password must be at least 8 characters long");
+        }
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
 
@@ -258,6 +263,11 @@ public class AuthService {
 
     @Transactional
     public void changePassword(UUID userId, String oldPassword, String newPassword) {
+        // Validate password length
+        if (newPassword == null || newPassword.length() < 8) {
+            throw new InvalidCredentialsException("Password must be at least 8 characters long");
+        }
+
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new UserNotFoundException("User not found"));
 
@@ -268,6 +278,11 @@ public class AuthService {
 
         if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
             throw new InvalidCredentialsException("Old password is incorrect");
+        }
+
+        // Check if new password is same as old password
+        if (passwordEncoder.matches(newPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException("New password must be different from your current password");
         }
 
         user.setPasswordHash(passwordEncoder.encode(newPassword));

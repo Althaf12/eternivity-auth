@@ -60,4 +60,4 @@ spring.mail:
 # Password reset configuration
 app.password-reset:
   token-expiry-minutes: 30
-  frontend-url: https://auth.eternivity.com/reset-password
+  frontend-url: https://eternivity.com/reset-password
