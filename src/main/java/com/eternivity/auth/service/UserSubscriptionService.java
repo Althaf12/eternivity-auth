@@ -23,6 +23,7 @@ public class UserSubscriptionService {
 
     // Service codes for available applications
     public static final String SERVICE_CODE_EXPENSE_TRACKER = "ExpenseTracker";
+    public static final String SERVICE_CODE_PASSWORD_VAULT = "PasswordVault";
 
     // Default plan and status for free subscriptions
     public static final String PLAN_FREE = "free";
@@ -33,7 +34,8 @@ public class UserSubscriptionService {
 
     // List of all available service codes for default subscription assignment
     private static final List<String> ALL_SERVICE_CODES = List.of(
-            SERVICE_CODE_EXPENSE_TRACKER
+            SERVICE_CODE_EXPENSE_TRACKER,
+            SERVICE_CODE_PASSWORD_VAULT
             // Add more service codes here as new applications are added
     );
 
