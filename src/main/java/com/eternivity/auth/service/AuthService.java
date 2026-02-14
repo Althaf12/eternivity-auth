@@ -194,7 +194,8 @@ public class AuthService {
         for (UserSubscription subscription : subscriptions) {
             UserInfoResponse.ServiceInfo serviceInfo = new UserInfoResponse.ServiceInfo(
                     subscription.getPlan(),
-                    subscription.getStatus()
+                    subscription.getStatus(),
+                    subscription.getEndDate()
             );
             services.put(subscription.getServiceCode(), serviceInfo);
         }
