@@ -61,3 +61,7 @@ spring.mail:
 app.password-reset:
   token-expiry-minutes: 30
   frontend-url: https://eternivity.com/reset-password
+
+# MFA configuration
+mfa:
+  encryption-key: ${mfa_encryption_key}

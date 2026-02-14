@@ -61,22 +61,60 @@ public class AuthService {
         private final String refreshToken;
         private final User user;
         private final String profileImageUrl; // optional, used for OAuth logins
+        private final boolean mfaVerified; // whether MFA was verified
 
         public TokenPair(String accessToken, String refreshToken, User user) {
-            this(accessToken, refreshToken, user, null);
+            this(accessToken, refreshToken, user, null, false);
         }
 
         public TokenPair(String accessToken, String refreshToken, User user, String profileImageUrl) {
+            this(accessToken, refreshToken, user, profileImageUrl, false);
+        }
+
+        public TokenPair(String accessToken, String refreshToken, User user, String profileImageUrl, boolean mfaVerified) {
             this.accessToken = accessToken;
             this.refreshToken = refreshToken;
             this.user = user;
             this.profileImageUrl = profileImageUrl;
+            this.mfaVerified = mfaVerified;
         }
 
         public String getAccessToken() { return accessToken; }
         public String getRefreshToken() { return refreshToken; }
         public User getUser() { return user; }
         public String getProfileImageUrl() { return profileImageUrl; }
+        public boolean isMfaVerified() { return mfaVerified; }
+    }
+
+    /**
+     * Result for login when MFA is required.
+     * Contains either full tokens (if MFA not enabled) or temp token (if MFA required).
+     */
+    public static class LoginResult {
+        private final boolean mfaRequired;
+        private final String tempToken; // Short-lived token for MFA verification
+        private final TokenPair tokenPair; // Full tokens if MFA not required
+        private final User user;
+
+        private LoginResult(boolean mfaRequired, String tempToken, TokenPair tokenPair, User user) {
+            this.mfaRequired = mfaRequired;
+            this.tempToken = tempToken;
+            this.tokenPair = tokenPair;
+            this.user = user;
+        }
+
+        public static LoginResult mfaRequired(String tempToken, User user) {
+            return new LoginResult(true, tempToken, null, user);
+        }
+
+        public static LoginResult success(TokenPair tokenPair) {
+            return new LoginResult(false, null, tokenPair, tokenPair.getUser());
+        }
+
+        public boolean isMfaRequired() { return mfaRequired; }
+        public String getTempToken() { return tempToken; }
+        public TokenPair getTokenPair() { return tokenPair; }
+        public User getUser() { return user; }
     }
 
     @Transactional
@@ -111,7 +149,7 @@ public class AuthService {
     }
 
     @Transactional
-    public TokenPair login(LoginRequest request, String deviceInfo) {
+    public LoginResult loginWithMfa(LoginRequest request, String deviceInfo) {
         String identifier = request.getIdentifier().trim();
 
         User user;
@@ -135,12 +173,47 @@ public class AuthService {
             throw new InvalidCredentialsException("Invalid username/email or password");
         }
 
+        // Check if MFA is enabled
+        if (Boolean.TRUE.equals(user.getMfaEnabled())) {
+            // Generate temporary token for MFA verification
+            String tempToken = tokenProvider.generateMfaTempToken(user);
+            return LoginResult.mfaRequired(tempToken, user);
+        }
+
+        // No MFA - generate full tokens
         // Ensure default subscriptions exist for existing users (assigns missing ones)
         List<UserSubscription> subscriptions = userSubscriptionService.ensureDefaultSubscriptions(user);
         user.setSubscriptions(subscriptions);
 
-        // Generate tokens
-        return createTokenPair(user, deviceInfo);
+        // Generate tokens (MFA not verified since user doesn't have MFA enabled)
+        TokenPair tokenPair = createTokenPair(user, deviceInfo, false);
+        return LoginResult.success(tokenPair);
+    }
+
+    @Transactional
+    public TokenPair login(LoginRequest request, String deviceInfo) {
+        // Backward compatible login - throws if MFA is required
+        LoginResult result = loginWithMfa(request, deviceInfo);
+        if (result.isMfaRequired()) {
+            // For backward compatibility, we need to handle this
+            // The caller should use loginWithMfa instead
+            throw new InvalidCredentialsException("MFA_REQUIRED");
+        }
+        return result.getTokenPair();
+    }
+
+    /**
+     * Complete login after MFA verification.
+     * Called from MfaController after successful OTP verification.
+     */
+    @Transactional
+    public TokenPair completeMfaLogin(User user, String deviceInfo) {
+        // Ensure default subscriptions exist
+        List<UserSubscription> subscriptions = userSubscriptionService.ensureDefaultSubscriptions(user);
+        user.setSubscriptions(subscriptions);
+
+        // Generate tokens with MFA verified
+        return createTokenPair(user, deviceInfo, true);
     }
 
     @Transactional
@@ -222,6 +295,9 @@ public class AuthService {
             authProviders.add(0, "LOCAL"); // Add LOCAL first if present
         }
 
+        // Check MFA status
+        boolean mfaEnabled = Boolean.TRUE.equals(user.getMfaEnabled());
+
         return new UserInfoResponse(
                 user.getUserId(),
                 user.getUsername(),
@@ -229,7 +305,8 @@ public class AuthService {
                 services,
                 profileImageUrl,
                 hasPassword,
-                authProviders
+                authProviders,
+                mfaEnabled
         );
     }
 
@@ -297,8 +374,16 @@ public class AuthService {
      * Create a new token pair (access + refresh) and store refresh token hash in DB
      */
     private TokenPair createTokenPair(User user, String deviceInfo) {
-        // Generate access token
-        String accessToken = tokenProvider.generateAccessToken(user);
+        return createTokenPair(user, deviceInfo, false);
+    }
+
+    /**
+     * Create a new token pair (access + refresh) and store refresh token hash in DB
+     * @param mfaVerified Whether MFA was verified during this login
+     */
+    private TokenPair createTokenPair(User user, String deviceInfo, boolean mfaVerified) {
+        // Generate access token with MFA status
+        String accessToken = tokenProvider.generateAccessToken(user, mfaVerified);
 
         // Generate refresh token
         String refreshToken = tokenProvider.generateRefreshToken();
@@ -318,7 +403,7 @@ public class AuthService {
         refreshTokenRepository.save(refreshTokenEntity);
 
         // For non-OAuth flows we don't have a profile image URL
-        return new TokenPair(accessToken, refreshToken, user, null);
+        return new TokenPair(accessToken, refreshToken, user, null, mfaVerified);
     }
 
     /**

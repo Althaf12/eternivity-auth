@@ -35,6 +35,13 @@ public class JwtTokenProvider {
 
     private static final Logger log = LoggerFactory.getLogger(JwtTokenProvider.class);
 
+    // Token types
+    public static final String TOKEN_TYPE_ACCESS = "access";
+    public static final String TOKEN_TYPE_MFA_TEMP = "mfa_temp";
+
+    // MFA temp token expiration: 2 minutes
+    private static final long MFA_TEMP_TOKEN_EXPIRATION = 2 * 60 * 1000;
+
     @Autowired
     private Environment environment;
 
@@ -142,12 +149,26 @@ public class JwtTokenProvider {
      * Generate a short-lived access token
      */
     public String generateAccessToken(User user) {
+        return generateAccessToken(user, false);
+    }
+
+    /**
+     * Generate a short-lived access token with MFA verification status
+     * @param user The user
+     * @param mfaVerified Whether MFA was verified during this login
+     */
+    public String generateAccessToken(User user, boolean mfaVerified) {
         Map<String, Object> claims = new HashMap<>();
         // Use standard subject claim for user id
         claims.put("sub", user.getUserId().toString());
         claims.put("username", user.getUsername());
         claims.put("email", user.getEmail());
-        claims.put("type", "access");
+        claims.put("type", TOKEN_TYPE_ACCESS);
+
+        // Add MFA claim - true if user has MFA enabled AND verified this session
+        boolean mfaEnabled = Boolean.TRUE.equals(user.getMfaEnabled());
+        claims.put("mfa", mfaEnabled && mfaVerified);
+        claims.put("mfa_enabled", mfaEnabled);
 
         // Add services information to JWT claims
         if (user.getSubscriptions() != null && !user.getSubscriptions().isEmpty()) {
@@ -175,6 +196,51 @@ public class JwtTokenProvider {
                 .setExpiration(expiryDate)
                 .signWith(getSigningKey(), SignatureAlgorithm.HS256)
                 .compact();
+    }
+
+    /**
+     * Generate a short-lived temporary token for MFA verification.
+     * This token is valid for 2 minutes and can only be used to verify MFA.
+     */
+    public String generateMfaTempToken(User user) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("sub", user.getUserId().toString());
+        claims.put("username", user.getUsername());
+        claims.put("type", TOKEN_TYPE_MFA_TEMP);
+
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + MFA_TEMP_TOKEN_EXPIRATION);
+
+        return Jwts.builder()
+                .setClaims(claims)
+                .setIssuer(issuer)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
+
+    /**
+     * Validate MFA temporary token and return user ID if valid.
+     */
+    public UUID validateMfaTempToken(String token) {
+        try {
+            Claims claims = Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+
+            String tokenType = claims.get("type", String.class);
+            if (!TOKEN_TYPE_MFA_TEMP.equals(tokenType)) {
+                return null;
+            }
+
+            return UUID.fromString(claims.getSubject());
+        } catch (Exception e) {
+            log.debug("Invalid MFA temp token", e);
+            return null;
+        }
     }
 
     /**
@@ -246,8 +312,13 @@ public class JwtTokenProvider {
 
             // Check if token is an access token
             String tokenType = claims.get("type", String.class);
-            return "access".equals(tokenType);
+            boolean isValid = "access".equals(tokenType);
+            if (!isValid) {
+                log.debug("Token validation failed: type='{}', expected='access'", tokenType);
+            }
+            return isValid;
         } catch (Exception e) {
+            log.debug("Token validation failed with exception: {}", e.getMessage());
             return false;
         }
     }

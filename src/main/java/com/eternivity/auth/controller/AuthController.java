@@ -3,21 +3,31 @@ package com.eternivity.auth.controller;
 import com.eternivity.auth.dto.ForgotPasswordRequest;
 import com.eternivity.auth.dto.GoogleAuthRequest;
 import com.eternivity.auth.dto.LoginRequest;
+import com.eternivity.auth.dto.MfaRequiredResponse;
+import com.eternivity.auth.dto.MfaVerifyRequest;
 import com.eternivity.auth.dto.RegisterRequest;
 import com.eternivity.auth.dto.ResetPasswordRequest;
 import com.eternivity.auth.dto.SetPasswordRequest;
 import com.eternivity.auth.dto.UserInfoResponse;
 import com.eternivity.auth.dto.PasswordChangeRequest;
+import com.eternivity.auth.entity.RefreshToken;
+import com.eternivity.auth.entity.User;
 import com.eternivity.auth.exception.BadRequestException;
 import com.eternivity.auth.exception.InvalidCredentialsException;
 import com.eternivity.auth.exception.InvalidTokenException;
+import com.eternivity.auth.exception.MfaException;
 import com.eternivity.auth.exception.OAuthAuthenticationException;
 import com.eternivity.auth.exception.UserAlreadyExistsException;
 import com.eternivity.auth.exception.UserNotFoundException;
+import com.eternivity.auth.repository.RefreshTokenRepository;
+import com.eternivity.auth.repository.UserRepository;
+import com.eternivity.auth.security.JwtTokenProvider;
 import com.eternivity.auth.service.AuthService;
 import com.eternivity.auth.service.CookieService;
 import com.eternivity.auth.service.GoogleOAuthService;
+import com.eternivity.auth.service.MfaService;
 import com.eternivity.auth.service.PasswordResetService;
+import com.eternivity.auth.service.UserSubscriptionService;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,16 +41,24 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
 import java.net.URI;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(AuthController.class);
+
     private final AuthService authService;
     private final CookieService cookieService;
     private final GoogleOAuthService googleOAuthService;
     private final PasswordResetService passwordResetService;
+    private final MfaService mfaService;
+    private final UserRepository userRepository;
+    private final RefreshTokenRepository refreshTokenRepository;
+    private final JwtTokenProvider tokenProvider;
+    private final UserSubscriptionService userSubscriptionService;
 
     @Value("${app.allowed-redirect-domains:.eternivity.com}")
     private String allowedRedirectDomains;
@@ -48,11 +66,21 @@ public class AuthController {
     public AuthController(AuthService authService,
                          CookieService cookieService,
                          GoogleOAuthService googleOAuthService,
-                         PasswordResetService passwordResetService) {
+                         PasswordResetService passwordResetService,
+                         MfaService mfaService,
+                         UserRepository userRepository,
+                         RefreshTokenRepository refreshTokenRepository,
+                         JwtTokenProvider tokenProvider,
+                         UserSubscriptionService userSubscriptionService) {
         this.authService = authService;
         this.cookieService = cookieService;
         this.googleOAuthService = googleOAuthService;
         this.passwordResetService = passwordResetService;
+        this.mfaService = mfaService;
+        this.userRepository = userRepository;
+        this.refreshTokenRepository = refreshTokenRepository;
+        this.tokenProvider = tokenProvider;
+        this.userSubscriptionService = userSubscriptionService;
     }
 
     @PostMapping("/register")
@@ -98,7 +126,16 @@ public class AuthController {
             HttpServletResponse response) {
         try {
             String deviceInfo = getDeviceInfo(httpRequest);
-            AuthService.TokenPair tokenPair = authService.login(request, deviceInfo);
+            AuthService.LoginResult loginResult = authService.loginWithMfa(request, deviceInfo);
+
+            // Check if MFA is required
+            if (loginResult.isMfaRequired()) {
+                // Return MFA_REQUIRED status with temp token
+                return ResponseEntity.ok(new MfaRequiredResponse(loginResult.getTempToken()));
+            }
+
+            // No MFA required - return full tokens
+            AuthService.TokenPair tokenPair = loginResult.getTokenPair();
 
             // Set HttpOnly cookies for SSO
             cookieService.addAccessTokenCookie(response, tokenPair.getAccessToken());
@@ -125,6 +162,7 @@ public class AuthController {
         }
     }
 
+
     /**
      * Google OAuth 2.0 Sign-In endpoint.
      * Accepts Google ID token from frontend and authenticates/registers user.
@@ -137,8 +175,15 @@ public class AuthController {
             HttpServletResponse response) {
         try {
             String deviceInfo = getDeviceInfo(httpRequest);
-            AuthService.TokenPair tokenPair = googleOAuthService.authenticateWithGoogle(
+            GoogleOAuthService.GoogleAuthResult authResult = googleOAuthService.authenticateWithGoogleMfa(
                     request.getCredential(), deviceInfo);
+
+            // Check if MFA is required
+            if (authResult.isMfaRequired()) {
+                return ResponseEntity.ok(new MfaRequiredResponse(authResult.getTempToken()));
+            }
+
+            AuthService.TokenPair tokenPair = authResult.getTokenPair();
 
             // Set HttpOnly cookies for SSO
             cookieService.addAccessTokenCookie(response, tokenPair.getAccessToken());
@@ -157,6 +202,11 @@ public class AuthController {
                     tokenPair.getProfileImageUrl()
             ));
         } catch (OAuthAuthenticationException e) {
+            // Check if this is MFA required (backward compatibility)
+            if (e.getMessage() != null && e.getMessage().startsWith("MFA_REQUIRED:")) {
+                String tempToken = e.getMessage().substring("MFA_REQUIRED:".length());
+                return ResponseEntity.ok(new MfaRequiredResponse(tempToken));
+            }
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ErrorResponse(e.getMessage()));
         } catch (IOException e) {

@@ -62,6 +62,36 @@ public class GoogleOAuthService {
         this.passwordEncoder = passwordEncoder;
     }
 
+    /**
+     * Result for Google OAuth authentication that may require MFA.
+     */
+    public static class GoogleAuthResult {
+        private final boolean mfaRequired;
+        private final String tempToken;
+        private final AuthService.TokenPair tokenPair;
+        private final String profileImageUrl;
+
+        private GoogleAuthResult(boolean mfaRequired, String tempToken, AuthService.TokenPair tokenPair, String profileImageUrl) {
+            this.mfaRequired = mfaRequired;
+            this.tempToken = tempToken;
+            this.tokenPair = tokenPair;
+            this.profileImageUrl = profileImageUrl;
+        }
+
+        public static GoogleAuthResult mfaRequired(String tempToken, String profileImageUrl) {
+            return new GoogleAuthResult(true, tempToken, null, profileImageUrl);
+        }
+
+        public static GoogleAuthResult success(AuthService.TokenPair tokenPair) {
+            return new GoogleAuthResult(false, null, tokenPair, tokenPair.getProfileImageUrl());
+        }
+
+        public boolean isMfaRequired() { return mfaRequired; }
+        public String getTempToken() { return tempToken; }
+        public AuthService.TokenPair getTokenPair() { return tokenPair; }
+        public String getProfileImageUrl() { return profileImageUrl; }
+    }
+
     @PostConstruct
     public void init() {
         if (googleClientId != null && !googleClientId.isEmpty()) {
@@ -89,6 +119,26 @@ public class GoogleOAuthService {
      */
     @Transactional
     public AuthService.TokenPair authenticateWithGoogle(String idTokenString, String deviceInfo) {
+        GoogleAuthResult result = authenticateWithGoogleMfa(idTokenString, deviceInfo);
+        if (result.isMfaRequired()) {
+            // For backward compatibility, throw exception
+            throw new OAuthAuthenticationException("MFA_REQUIRED:" + result.getTempToken());
+        }
+        return result.getTokenPair();
+    }
+
+    /**
+     * Authenticate user with Google ID token with MFA support.
+     * - If OAuth account exists, log in the user (MFA may be required).
+     * - If email exists but no OAuth account, link the OAuth account to existing user.
+     * - If user doesn't exist, register a new user with OAuth account.
+     *
+     * @param idTokenString The Google ID token from frontend
+     * @param deviceInfo    Device information for refresh token tracking
+     * @return GoogleAuthResult that may require MFA verification
+     */
+    @Transactional
+    public GoogleAuthResult authenticateWithGoogleMfa(String idTokenString, String deviceInfo) {
         if (verifier == null) {
             throw new OAuthAuthenticationException("Google OAuth is not configured");
         }
@@ -135,7 +185,14 @@ public class GoogleOAuthService {
             }
 
             logger.info("Google OAuth: Existing OAuth account found for user: {}", user.getUserId());
-            return createTokenPairForUser(user, deviceInfo, pictureUrl);
+
+            // Check if user has MFA enabled
+            if (Boolean.TRUE.equals(user.getMfaEnabled())) {
+                String tempToken = tokenProvider.generateMfaTempToken(user);
+                return GoogleAuthResult.mfaRequired(tempToken, pictureUrl);
+            }
+
+            return GoogleAuthResult.success(createTokenPairForUser(user, deviceInfo, pictureUrl));
         }
 
         // Check if a user with this email already exists (registered via username/password)
@@ -146,13 +203,21 @@ public class GoogleOAuthService {
             User user = existingUser.get();
             logger.info("Google OAuth: Linking Google account to existing user: {}", user.getUserId());
             linkOAuthAccount(user, googleUserId, pictureUrl);
-            return createTokenPairForUser(user, deviceInfo, pictureUrl);
+
+            // Check if user has MFA enabled
+            if (Boolean.TRUE.equals(user.getMfaEnabled())) {
+                String tempToken = tokenProvider.generateMfaTempToken(user);
+                return GoogleAuthResult.mfaRequired(tempToken, pictureUrl);
+            }
+
+            return GoogleAuthResult.success(createTokenPairForUser(user, deviceInfo, pictureUrl));
         }
 
         // Register new user with Google OAuth
         logger.info("Google OAuth: Registering new user with email: {}", email);
         User newUser = registerNewGoogleUser(email, name, googleUserId, pictureUrl);
-        return createTokenPairForUser(newUser, deviceInfo, pictureUrl);
+        // New users don't have MFA enabled, so no MFA check needed
+        return GoogleAuthResult.success(createTokenPairForUser(newUser, deviceInfo, pictureUrl));
     }
 
     /**

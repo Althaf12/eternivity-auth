@@ -52,8 +52,12 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/google").permitAll()
                 // Password reset endpoints (public - no auth required)
                 .requestMatchers("/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                // MFA verification during login (public - uses temp token, not regular auth)
+                .requestMatchers("/api/auth/mfa/verify").permitAll()
                 // JWT key endpoint for downstream services (should be secured in production via network/API gateway)
                 .requestMatchers("/api/auth/jwk").permitAll()
+                // MFA management endpoints (require authentication: setup, enable, disable, status)
+                .requestMatchers("/api/auth/mfa/setup", "/api/auth/mfa/enable", "/api/auth/mfa/disable", "/api/auth/mfa/status").authenticated()
                 // Protected endpoints
                 .requestMatchers("/api/auth/me", "/api/auth/password-reset", "/api/auth/logout", "/api/auth/set-password").authenticated()
                 .anyRequest().authenticated()

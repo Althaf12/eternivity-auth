@@ -7,7 +7,11 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +32,8 @@ import java.util.stream.Collectors;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(JwtAuthenticationFilter.class);
+
     private final JwtTokenProvider tokenProvider;
 
     public JwtAuthenticationFilter(JwtTokenProvider tokenProvider) {
@@ -39,59 +45,76 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
-            // Guard: if SecurityContext already has an authenticated principal, skip processing
-            if (SecurityContextHolder.getContext().getAuthentication() != null &&
-                    SecurityContextHolder.getContext().getAuthentication().isAuthenticated()) {
+            String requestUri = request.getRequestURI();
+            String method = request.getMethod();
+            log.debug("Processing request: {} {}", method, requestUri);
+
+            // Guard: if SecurityContext already has an authenticated non-anonymous principal, skip processing
+            Authentication existingAuth = SecurityContextHolder.getContext().getAuthentication();
+            if (existingAuth != null && existingAuth.isAuthenticated() &&
+                    !(existingAuth instanceof AnonymousAuthenticationToken)) {
+                log.debug("Existing non-anonymous authentication found, skipping JWT processing");
                 filterChain.doFilter(request, response);
                 return;
             }
 
             String jwt = getJwtFromRequest(request);
+            log.debug("JWT from request: {}", jwt != null ? "present (length=" + jwt.length() + ")" : "null");
 
-            if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
-                UUID userId = tokenProvider.getUserIdFromToken(jwt);
-                String username = tokenProvider.getUsernameFromToken(jwt);
+            if (StringUtils.hasText(jwt)) {
+                boolean valid = tokenProvider.validateToken(jwt);
+                log.debug("JWT validation result: {}", valid);
 
-                // Extract roles/authorities from token claims, if present
-                Collection<GrantedAuthority> authorities = new ArrayList<>();
-                try {
-                    Claims claims = tokenProvider.getAllClaimsFromToken(jwt);
-                    Object rolesObj = claims.get("roles");
+                if (valid) {
+                    UUID userId = tokenProvider.getUserIdFromToken(jwt);
+                    String username = tokenProvider.getUsernameFromToken(jwt);
+                    log.debug("JWT valid for userId={}, username={}", userId, username);
 
-                    if (rolesObj instanceof String) {
-                        String rolesStr = (String) rolesObj;
-                        authorities = Arrays.stream(rolesStr.split(","))
-                                .map(String::trim)
-                                .filter(s -> !s.isEmpty())
-                                .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
-                                .map(SimpleGrantedAuthority::new)
-                                .collect(Collectors.toList());
-                    } else if (rolesObj instanceof List) {
-                        @SuppressWarnings("unchecked")
-                        List<Object> list = (List<Object>) rolesObj;
-                        authorities = list.stream()
-                                .filter(Objects::nonNull)
-                                .map(Object::toString)
-                                .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
-                                .map(SimpleGrantedAuthority::new)
-                                .collect(Collectors.toList());
+                    // Extract roles/authorities from token claims, if present
+                    Collection<GrantedAuthority> authorities = new ArrayList<>();
+                    try {
+                        Claims claims = tokenProvider.getAllClaimsFromToken(jwt);
+                        Object rolesObj = claims.get("roles");
+
+                        if (rolesObj instanceof String rolesStr) {
+                            authorities = Arrays.stream(rolesStr.split(","))
+                                    .map(String::trim)
+                                    .filter(s -> !s.isEmpty())
+                                    .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
+                                    .map(SimpleGrantedAuthority::new)
+                                    .collect(Collectors.toList());
+                        } else if (rolesObj instanceof List) {
+                            @SuppressWarnings("unchecked")
+                            List<Object> list = (List<Object>) rolesObj;
+                            authorities = list.stream()
+                                    .filter(Objects::nonNull)
+                                    .map(Object::toString)
+                                    .map(r -> r.startsWith("ROLE_") ? r : "ROLE_" + r)
+                                    .map(SimpleGrantedAuthority::new)
+                                    .collect(Collectors.toList());
+                        }
+                    } catch (Exception ex) {
+                        log.debug("Failed to extract roles from JWT claims, will fall back to default role", ex);
                     }
-                } catch (Exception ex) {
-                    logger.debug("Failed to extract roles from JWT claims, will fall back to default role", ex);
+
+                    if (authorities.isEmpty()) {
+                        authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
+                    }
+
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+                    log.debug("JWT authentication set for userId={}", userId);
+                } else {
+                    log.debug("JWT validation failed for request: {} {}", method, requestUri);
                 }
-
-                if (authorities == null || authorities.isEmpty()) {
-                    authorities = List.of(new SimpleGrantedAuthority("ROLE_USER"));
-                }
-
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(userId, null, authorities);
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+            } else {
+                log.debug("No JWT found in request: {} {}", method, requestUri);
             }
         } catch (Exception ex) {
-            logger.error("Could not set user authentication in security context", ex);
+            log.error("Could not set user authentication in security context", ex);
         }
 
         filterChain.doFilter(request, response);
