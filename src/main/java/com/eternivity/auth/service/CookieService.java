@@ -12,10 +12,10 @@ public class CookieService {
     public static final String REFRESH_TOKEN_COOKIE = "refresh_token";
 
     @Value("${jwt.access-token.expiration}")
-    private int accessTokenExpirationSeconds;
+    private long accessTokenExpirationMs;  // value is in milliseconds
 
     @Value("${jwt.refresh-token.expiration}")
-    private int refreshTokenExpirationSeconds;
+    private long refreshTokenExpirationMs; // value is in milliseconds
 
     @Value("${app.cookie.domain}")
     private String cookieDomain;
@@ -27,7 +27,8 @@ public class CookieService {
      * Creates and adds access token cookie to response
      */
     public void addAccessTokenCookie(HttpServletResponse response, String accessToken) {
-        Cookie cookie = createCookie(ACCESS_TOKEN_COOKIE, accessToken, accessTokenExpirationSeconds);
+        int maxAgeSeconds = (int) (accessTokenExpirationMs / 1000);
+        Cookie cookie = createCookie(ACCESS_TOKEN_COOKIE, accessToken, maxAgeSeconds);
         response.addCookie(cookie);
     }
 
@@ -35,7 +36,8 @@ public class CookieService {
      * Creates and adds refresh token cookie to response
      */
     public void addRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
-        Cookie cookie = createCookie(REFRESH_TOKEN_COOKIE, refreshToken, refreshTokenExpirationSeconds);
+        int maxAgeSeconds = (int) (refreshTokenExpirationMs / 1000);
+        Cookie cookie = createCookie(REFRESH_TOKEN_COOKIE, refreshToken, maxAgeSeconds);
         response.addCookie(cookie);
     }
 
